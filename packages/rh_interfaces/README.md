@@ -11,6 +11,7 @@ simulator-specific code.
 |---|---|---|---|
 | `/roboharness/env/status` | `ComponentStatus` | Environment | Experiment |
 | `/roboharness/agent/status` | `ComponentStatus` | Agent | Experiment |
+| `/roboharness/agent/task_state` | `AgentTaskState` | Agent | Experiment/Evaluator |
 | `/roboharness/env/reset_episode` | `ResetEnv` | Environment | Experiment |
 | `/roboharness/agent/reset_episode` | `ResetAgent` | Agent | Experiment |
 | `/roboharness/episode/state` | `EpisodeState` | Experiment | Environment, Agent, Evaluator |
@@ -42,6 +43,12 @@ does not wrap those observations in a generic message.
   heartbeats retain it instead of replacing it with publication time.
 - `EpisodeState.sequence` increases on every authoritative transition within an
   Episode. Consumers reject stale Episode IDs or sequence values.
+- `AgentTaskState` reports the Agent's own execution state, analogous to a
+  navigation action result. `SUCCEEDED` means the Agent believes navigation is
+  complete; it is not by itself the authoritative benchmark result. The
+  Agent must stop producing non-zero commands before publishing it and remain
+  stopped until the Episode leaves `RUNNING`. The Evaluator confirms the final
+  ground-truth position before proposing success.
 - `EpisodeResult` is deliberately compact. `result_uri` is opaque and points to
   the durable JSON result; its storage scheme is not part of this ROS contract.
 - A reset `request_id` is an idempotency key. Runtime behavior for duplicate

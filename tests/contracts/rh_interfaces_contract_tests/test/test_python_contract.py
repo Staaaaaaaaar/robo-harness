@@ -6,11 +6,24 @@ from pathlib import Path
 import pytest
 from ament_index_python.packages import get_package_share_directory
 from rclpy.serialization import deserialize_message, serialize_message
-from rh_interfaces.msg import ComponentStatus, EpisodeResult, EpisodeState, PointNavTask
+from rh_interfaces.msg import (
+    AgentTaskState,
+    ComponentStatus,
+    EpisodeResult,
+    EpisodeState,
+    PointNavTask,
+)
 from rh_interfaces.srv import AbortEpisode, ResetAgent, ResetEnv, StartEpisode
 
 
 def test_stable_numeric_constants() -> None:
+    assert {
+        "IDLE": AgentTaskState.IDLE,
+        "RUNNING": AgentTaskState.RUNNING,
+        "SUCCEEDED": AgentTaskState.SUCCEEDED,
+        "FAILED": AgentTaskState.FAILED,
+    } == {"IDLE": 0, "RUNNING": 1, "SUCCEEDED": 2, "FAILED": 3}
+
     assert {
         "STARTING": ComponentStatus.STARTING,
         "RESETTING": ComponentStatus.RESETTING,
@@ -50,6 +63,17 @@ def test_stable_numeric_constants() -> None:
 @pytest.mark.parametrize(
     ("interface_type", "expected_fields"),
     [
+        (
+            AgentTaskState,
+            {
+                "stamp": "builtin_interfaces/Time",
+                "experiment_id": "string",
+                "episode_id": "string",
+                "sequence": "uint64",
+                "state": "uint8",
+                "detail": "string",
+            },
+        ),
         (
             ComponentStatus,
             {
@@ -146,6 +170,12 @@ def test_field_names_order_and_types_are_stable(
 @pytest.mark.parametrize(
     "instance",
     [
+        AgentTaskState(
+            experiment_id="experiment-1",
+            episode_id="episode-1",
+            sequence=2,
+            state=AgentTaskState.SUCCEEDED,
+        ),
         ComponentStatus(component_id="env", state=ComponentStatus.READY),
         EpisodeState(
             experiment_id="experiment-1",
