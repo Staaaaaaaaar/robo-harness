@@ -12,6 +12,8 @@ the same ROS topics, services, TF, and clock used by real implementations.
   command gating, Episode isolation, and controlled failure behavior.
 - `rh_experiment_integration_tests` uses protocol-only Env and Agent stubs to
   verify the authoritative single-Episode lifecycle and failure coordination.
+- `rh_pointnav_integration_tests` verifies direct immutable task delivery,
+  transient-local late join, and the reset/task/READY preparation order.
 
 The mock fixtures remain deterministic protocol probes; passing these tests is
 not evidence of simulator physics or robot compatibility.

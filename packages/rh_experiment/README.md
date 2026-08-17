@@ -32,3 +32,7 @@ Optional identity and deadline parameters are `experiment_id`,
 
 PointNav task publication, evaluator termination conditions, result recording,
 and the multi-Episode loop remain owned by later roadmap PRs.
+
+Concrete Task packages integrate through the small in-process
+`EpisodeTaskPublisher` factory boundary. The generic lifecycle package does not
+statically depend on PointNav or any future Task implementation.

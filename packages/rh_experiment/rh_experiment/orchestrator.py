@@ -27,6 +27,7 @@ from rh_core import (
     load_experiment_config,
 )
 from rh_experiment.controller import ControlDecision, SingleEpisodeController
+from rh_experiment.task import EpisodeTaskPublisherFactory
 from rh_ros import (
     ServiceCallError,
     ServiceCallTimeoutError,
@@ -63,6 +64,7 @@ class SingleEpisodeOrchestratorNode(Node):
         node_name: str = "rh_experiment_orchestrator",
         parameter_overrides: list[Parameter] | None = None,
         config: ExperimentConfig | None = None,
+        task_publisher_factory: EpisodeTaskPublisherFactory | None = None,
     ) -> None:
         overrides = list(parameter_overrides or [])
         if not any(parameter.name == "use_sim_time" for parameter in overrides):
@@ -111,6 +113,11 @@ class SingleEpisodeOrchestratorNode(Node):
             EpisodeStateMessage,
             "/roboharness/episode/state",
             latched_control_qos(),
+        )
+        self._task_publisher = (
+            task_publisher_factory(self, experiment_id, episode)
+            if task_publisher_factory is not None
+            else None
         )
         self._env_status = StatusMonitor(
             self,
@@ -333,6 +340,8 @@ class SingleEpisodeOrchestratorNode(Node):
             return
         if not self._reset_agent():
             return
+        if not self._publish_episode_task():
+            return
         with self._state_lock:
             self._controller.mark_prepared()
         self._publish_state("Episode preparation complete")
@@ -367,6 +376,19 @@ class SingleEpisodeOrchestratorNode(Node):
             self._commit_infrastructure_failure(
                 TerminationReason.ENV_ERROR,
                 f"Env reset rejected ({response.error_code}): {response.detail}",
+            )
+            return False
+        return True
+
+    def _publish_episode_task(self) -> bool:
+        if self._task_publisher is None:
+            return True
+        try:
+            self._task_publisher.publish()
+        except Exception as error:
+            self._commit_infrastructure_failure(
+                TerminationReason.FAILURE,
+                f"task publication failed: {error}",
             )
             return False
         return True
@@ -528,22 +550,34 @@ class SingleEpisodeOrchestratorNode(Node):
         with self._state_lock:
             return self._controller.episode.state
 
-    def destroy_node(self) -> bool:
-        if hasattr(self, "_stop_requested"):
-            self._stop_requested.set()
+    def stop(self) -> None:
+        """Stop the control thread before executor and ROS entity teardown."""
+
+        self._stop_requested.set()
         if hasattr(self, "_worker") and self._worker.is_alive():
             self._worker.join(timeout=self._control_request_timeout_s)
+
+    def destroy_node(self) -> bool:
+        if hasattr(self, "_stop_requested"):
+            self.stop()
         return super().destroy_node()
 
 
-def main(args: list[str] | None = None) -> None:
+def main(
+    args: list[str] | None = None,
+    *,
+    task_publisher_factory: EpisodeTaskPublisherFactory | None = None,
+) -> None:
     rclpy.init(args=args)
-    node = SingleEpisodeOrchestratorNode()
+    node = SingleEpisodeOrchestratorNode(
+        task_publisher_factory=task_publisher_factory,
+    )
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
     try:
         executor.spin()
     finally:
+        node.stop()
         executor.shutdown()
         node.destroy_node()
         rclpy.shutdown()
