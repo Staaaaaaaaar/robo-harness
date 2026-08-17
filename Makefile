@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 COMPOSE := docker compose --env-file deployment/env/versions.env \
 	-f deployment/compose/compose.dev.yaml
-BASE_PATHS := packages agents tasks evaluators tests/fixtures
+BASE_PATHS := packages agents tasks evaluators tests
 COLCON_ENV := COLCON_DEFAULTS_FILE=$(CURDIR)/colcon.defaults.yaml
 
 CURRENT_USER := $(shell id -un)
@@ -57,6 +57,6 @@ test-local: build-local
 
 lint-local:
 	python3 tools/validation/check_repository.py
-	ruff check tools
+	ruff check tools tests
 
 check-local: lint-local list-local test-local

@@ -1,0 +1,18 @@
+# Opaque idempotency key. Repeating a completed request_id must not reset twice.
+string request_id
+string experiment_id
+string episode_id
+
+# Requested robot root pose. RoboHarness MVP requires the "map" frame.
+geometry_msgs/PoseStamped start
+
+# Reproducibility seed supplied to the environment backend.
+int64 seed
+---
+bool success
+
+# Zero means no error. Non-zero values are component-specific.
+uint32 error_code
+
+# Short human-readable context; clients must not parse this field.
+string detail

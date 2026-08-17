@@ -1,0 +1,9 @@
+string experiment_id
+string episode_id
+---
+
+# Acceptance only acknowledges the transition request; it is not an episode result.
+bool accepted
+
+# Short human-readable context; clients must not parse this field.
+string detail
