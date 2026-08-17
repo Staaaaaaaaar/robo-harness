@@ -57,6 +57,6 @@ test-local: build-local
 
 lint-local:
 	python3 tools/validation/check_repository.py
-	ruff check tools tests packages
+	ruff check tools tests packages agents tasks evaluators
 
 check-local: lint-local list-local test-local

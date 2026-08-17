@@ -17,6 +17,7 @@ from rclpy.parameter import Parameter
 from rh_interfaces.msg import ComponentStatus
 from rh_interfaces.msg import EpisodeState as EpisodeStateMessage
 from rh_interfaces.srv import AbortEpisode, ResetAgent, ResetEnv, StartEpisode
+from rosgraph_msgs.msg import Clock as ClockMessage
 
 from rh_core import (
     EpisodeState,
@@ -27,6 +28,7 @@ from rh_core import (
     load_experiment_config,
 )
 from rh_experiment.controller import ControlDecision, SingleEpisodeController
+from rh_experiment.evaluation import EpisodeEvaluatorFactory
 from rh_experiment.task import EpisodeTaskPublisherFactory
 from rh_ros import (
     ServiceCallError,
@@ -65,6 +67,7 @@ class SingleEpisodeOrchestratorNode(Node):
         parameter_overrides: list[Parameter] | None = None,
         config: ExperimentConfig | None = None,
         task_publisher_factory: EpisodeTaskPublisherFactory | None = None,
+        evaluator_factory: EpisodeEvaluatorFactory | None = None,
     ) -> None:
         overrides = list(parameter_overrides or [])
         if not any(parameter.name == "use_sim_time" for parameter in overrides):
@@ -83,6 +86,7 @@ class SingleEpisodeOrchestratorNode(Node):
         self.declare_parameter("reset_timeout_s", 30.0)
         self.declare_parameter("safe_stop_timeout_s", 2.0)
         self.declare_parameter("control_request_timeout_s", 2.0)
+        self.declare_parameter("simulation_clock_stale_timeout_s", 5.0)
 
         runtime_config = config or self._load_config_parameter()
         if len(runtime_config.experiment.episodes) != 1:
@@ -106,6 +110,9 @@ class SingleEpisodeOrchestratorNode(Node):
         self._control_request_timeout_s = self._positive_parameter(
             "control_request_timeout_s"
         )
+        self._simulation_clock_stale_timeout_s = self._positive_parameter(
+            "simulation_clock_stale_timeout_s"
+        )
         self._env_component_id = self._non_empty_parameter("env_component_id")
         self._agent_component_id = self._non_empty_parameter("agent_component_id")
 
@@ -118,6 +125,21 @@ class SingleEpisodeOrchestratorNode(Node):
             task_publisher_factory(self, experiment_id, episode)
             if task_publisher_factory is not None
             else None
+        )
+        self._evaluator = (
+            evaluator_factory(self, experiment_id, episode, self.submit_termination)
+            if evaluator_factory is not None
+            else None
+        )
+        self._clock_lock = threading.Lock()
+        self._last_clock_nanoseconds: int | None = None
+        self._last_clock_wall_time: float | None = None
+        self._running_wall_time: float | None = None
+        self._clock_subscription = self.create_subscription(
+            ClockMessage,
+            "/clock",
+            self._on_clock,
+            1,
         )
         self._env_status = StatusMonitor(
             self,
@@ -453,6 +475,45 @@ class SingleEpisodeOrchestratorNode(Node):
                     f"{label} status heartbeat became stale",
                 )
                 return
+        if self._episode_state() is EpisodeState.RUNNING:
+            with self._clock_lock:
+                references = tuple(
+                    value
+                    for value in (
+                        self._last_clock_wall_time,
+                        self._running_wall_time,
+                    )
+                    if value is not None
+                )
+                reference = max(references) if references else None
+            if (
+                reference is not None
+                and time.monotonic() - reference
+                >= self._simulation_clock_stale_timeout_s
+            ):
+                self._commit_infrastructure_failure(
+                    TerminationReason.ENV_ERROR,
+                    "simulation clock stopped advancing",
+                )
+                return
+
+    def _on_clock(self, message: ClockMessage) -> None:
+        simulation_nanoseconds = (
+            int(message.clock.sec) * 1_000_000_000 + int(message.clock.nanosec)
+        )
+        running = self._episode_state() is EpisodeState.RUNNING
+        with self._clock_lock:
+            advances = (
+                self._last_clock_nanoseconds is None
+                or simulation_nanoseconds > self._last_clock_nanoseconds
+                or (
+                    not running
+                    and simulation_nanoseconds != self._last_clock_nanoseconds
+                )
+            )
+            if advances:
+                self._last_clock_nanoseconds = simulation_nanoseconds
+                self._last_clock_wall_time = time.monotonic()
 
     def _handle_event(self, event: _ControlEvent) -> ControlDecision:
         if event.kind == "start":
@@ -482,6 +543,8 @@ class SingleEpisodeOrchestratorNode(Node):
         with self._state_lock:
             decision = self._controller.request_start(experiment_id, episode_id)
         if decision.accepted:
+            with self._clock_lock:
+                self._running_wall_time = time.monotonic()
             self._publish_state(decision.detail)
         return decision
 
@@ -567,10 +630,12 @@ def main(
     args: list[str] | None = None,
     *,
     task_publisher_factory: EpisodeTaskPublisherFactory | None = None,
+    evaluator_factory: EpisodeEvaluatorFactory | None = None,
 ) -> None:
     rclpy.init(args=args)
     node = SingleEpisodeOrchestratorNode(
         task_publisher_factory=task_publisher_factory,
+        evaluator_factory=evaluator_factory,
     )
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
