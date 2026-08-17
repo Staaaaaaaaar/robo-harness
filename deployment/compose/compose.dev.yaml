@@ -1,0 +1,26 @@
+name: roboharness-development
+
+services:
+  dev:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/dev/Dockerfile
+      args:
+        ROS_BASE_IMAGE: ${RH_ROS_BASE_IMAGE}
+        USER_UID: ${HOST_UID:-1000}
+        USER_GID: ${HOST_GID:-1000}
+    image: ${RH_DEV_IMAGE}
+    working_dir: /workspace/roboharness
+    user: developer
+    init: true
+    stdin_open: true
+    tty: true
+    environment:
+      COLCON_DEFAULTS_FILE: /workspace/roboharness/colcon.defaults.yaml
+      ROS_DISTRO: humble
+    volumes:
+      - ../..:/workspace/roboharness
+      - colcon-cache:/home/developer/.ccache
+
+volumes:
+  colcon-cache:

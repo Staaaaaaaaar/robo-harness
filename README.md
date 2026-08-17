@@ -6,7 +6,8 @@ RoboHarness 是面向机器人导航任务的快速实验、自动运行与统�
 
 ## 当前状态
 
-项目处于重构规划阶段，尚未开始功能实现。当前 MVP 严格限定为：
+项目处于工程基础阶段，PR 01 仅提供可复现的 monorepo 开发、构建和检查
+入口，尚未实现运行时功能。当前 MVP 严格限定为：
 
 - Simulator：NVIDIA Isaac Sim
 - Robot：Unitree Go2
@@ -42,9 +43,42 @@ RoboHarness 是面向机器人导航任务的快速实验、自动运行与统�
 
 上述规划是当前实现工作的权威基线。若实现需要改变已确认的架构决策，应先提交 ADR 与文档 PR。
 
-## 预计快速开始方式
+## 开发环境
 
-以下命令描述 MVP 完成后的目标体验，当前尚不可执行：
+唯一受支持的开发路径是 Ubuntu 22.04、ROS 2 Humble、Python 3.10 的 CPU
+开发容器。宿主机只需 Git、Docker Engine、Docker Compose v2 和 Make，不需
+安装 ROS 2。
+
+```bash
+make dev-image
+make dev-check
+```
+
+交互式开发：
+
+```bash
+make dev-shell
+make build-local
+source .build/colcon/install/setup.bash
+make test-local
+```
+
+常用宿主机入口：
+
+```bash
+make dev-list
+make dev-build
+make dev-test
+make dev-lint
+```
+
+开发容器只是临时工具环境，不属于 RoboHarness 的运行服务。详细说明见
+[部署与开发环境](deployment/README.md)和
+[开发平台 ADR](docs/adr/0001-development-platform.md)。
+
+## 预计运行方式
+
+以下命令描述 MVP 完成后的三服务目标体验，当前尚不可执行：
 
 ```bash
 cp deployment/env/.env.example deployment/env/.env
@@ -66,11 +100,14 @@ services start
 
 ## 开发约定
 
+- 容器内执行 Colcon、测试和 lint；CI 使用同一个开发镜像和 `make dev-check`。
 - 使用 feature branch 与 Pull Request，保护 `main`。
 - Commit 遵循 Conventional Commits。
 - 推荐使用 Squash Merge，使一个 PR 对应一个可回滚的逻辑变更。
 - 每个 PR 必须保持可构建、可测试、职责单一，并更新受影响文档。
 - CPU CI 使用 mock components 覆盖平台协议；Isaac / GPU 测试放在手工、自托管或 nightly 流程。
+
+完整贡献规范见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 非目标
 
