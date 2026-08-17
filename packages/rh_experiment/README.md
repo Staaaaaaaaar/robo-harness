@@ -31,7 +31,11 @@ Optional identity and deadline parameters are `experiment_id`,
 steady-time watchdog used only after an Episode enters `RUNNING`. Lifecycle
 deadlines use steady time and do not depend on `/clock`.
 
-Result recording and the multi-Episode loop remain owned by later roadmap PRs.
+The versioned [`Result Schema`](RESULT_SCHEMA.md) and ROS-independent
+`ResultRecorder` provide atomic metadata, spec, event, trajectory, metric, and
+summary artifacts. Recording begins with durable `complete=false` commit
+markers, so interrupted runs remain independently parseable. PR 11 owns the
+full lifecycle wiring and multi-Episode loop.
 
 Concrete Task packages integrate through the small in-process
 `EpisodeTaskPublisher` factory boundary. The generic lifecycle package does not

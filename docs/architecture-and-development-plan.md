@@ -818,7 +818,7 @@ CPU CI 至少执行 `colcon build`、lint/type checks、unit/interface tests、m
 **Acceptance Criteria:** 中断也留下可解析 `complete=false` artifacts；正常结果可由独立 reader 校验。  
 **Dependencies:** PR 03；可与 PR 05–09 并行。  
 **Risks:** 写入阻塞 ROS callback；通过 buffered module/终止阶段写入控制。  
-**After this PR:** 实验输出可复现、可追踪、可机器读取。
+**After this PR:** 实验输出可复现、可追踪、可机器读取；中控的完整生命周期接入仍由 PR 11 完成。
 
 #### PR 11 — Multi-Episode and Failure Policy
 
