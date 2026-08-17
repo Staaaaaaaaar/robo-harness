@@ -11,4 +11,5 @@ specific simulator, robot, agent, task, or evaluator implementation.
 - [`rh_ros`](rh_ros/README.md) owns reusable ROS runtime QoS, heartbeat,
   idempotency, deadline, sequence-filtering, and model/message adapters.
 
-`rh_experiment` is introduced by its roadmap PR.
+- [`rh_experiment`](rh_experiment/README.md) owns the Experiment control plane
+  and authoritative Episode lifecycle. Its PR 07 scope is one Episode only.
