@@ -13,10 +13,10 @@ and simulation-time timeout predicates for later Evaluators.
 Use the composed runtime entrypoint:
 
 ```bash
-ros2 run rh_pointnav orchestrator --ros-args \
+ros2 run rh_bringup experiment --profile pointnav_simple --ros-args \
   -p config_path:=/workspace/roboharness/configs/experiments/mvp.yaml
 ```
 
-The generic `rh_experiment` lifecycle package does not import this package.
-`rh_pointnav` supplies the concrete publisher through its in-process task
-factory boundary.
+`rh_pointnav` has no application entrypoint. It supplies the concrete publisher
+through its in-process task factory boundary; `rh_bringup` is the only package
+that selects it for a runtime assembly.

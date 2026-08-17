@@ -1,8 +1,9 @@
 # Platform packages
 
 This domain contains shared RoboHarness platform and communication packages.
-Packages must depend toward stable layers and must not statically depend on a
-specific simulator, robot, agent, task, or evaluator implementation.
+Platform packages depend toward stable layers and do not statically depend on a
+specific simulator, robot, agent, task, or evaluator implementation. The sole
+exception is the deliberately concrete `rh_bringup` composition root.
 
 - [`rh_interfaces`](rh_interfaces/README.md) owns the implementation-independent
   ROS wire contract.
@@ -13,3 +14,5 @@ specific simulator, robot, agent, task, or evaluator implementation.
 
 - [`rh_experiment`](rh_experiment/README.md) owns the Experiment control plane
   and authoritative Episode lifecycle. Its PR 07 scope is one Episode only.
+- [`rh_bringup`](rh_bringup/README.md) is the Experiment-container composition
+  root that explicitly selects concrete Task and Evaluator implementations.
