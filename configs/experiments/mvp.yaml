@@ -1,0 +1,25 @@
+schema_version: 1
+experiment:
+  name: go2_keyboard_pointnav
+  execution_mode: manual
+  episodes:
+    - episode_id: "0000"
+      scenario: warehouse_default
+      initial_pose:
+        frame_id: map
+        x: 1.0
+        y: 2.0
+        z: 0.4
+        roll: 0.0
+        pitch: 0.0
+        yaw: 0.0
+      task:
+        type: pointnav
+        goal:
+          frame_id: map
+          x: 8.0
+          y: 4.0
+          z: 0.4
+        success_radius_m: 0.5
+        timeout_s: 120.0
+      seed: 42

@@ -89,15 +89,22 @@ TEST(RhInterfacesContract, GeneratedCppTypesAreUsable)
   EXPECT_EQ(state.sequence, 4u);
 
   rh_interfaces::msg::PointNavTask task;
-  task.start.header.frame_id = "map";
   task.goal.header.frame_id = "map";
+  task.goal.point.y = 4.0;
+  task.goal.point.z = 1.5;
   task.success_radius_m = 0.5;
+  EXPECT_DOUBLE_EQ(task.goal.point.y, 4.0);
+  EXPECT_DOUBLE_EQ(task.goal.point.z, 1.5);
   EXPECT_DOUBLE_EQ(task.success_radius_m, 0.5);
 
   rh_interfaces::srv::ResetEnv::Request reset_request;
   reset_request.request_id = "request-1";
-  reset_request.start.header.frame_id = "map";
-  EXPECT_EQ(reset_request.start.header.frame_id, "map");
+  reset_request.initial_pose.header.frame_id = "map";
+  reset_request.initial_pose.pose.position.x = 1.0;
+  reset_request.initial_pose.pose.orientation.w = 1.0;
+  EXPECT_EQ(reset_request.initial_pose.header.frame_id, "map");
+  EXPECT_DOUBLE_EQ(reset_request.initial_pose.pose.position.x, 1.0);
+  EXPECT_DOUBLE_EQ(reset_request.initial_pose.pose.orientation.w, 1.0);
 
   rh_interfaces::srv::ResetAgent::Response reset_response;
   reset_response.success = true;

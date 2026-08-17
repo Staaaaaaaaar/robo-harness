@@ -1,5 +1,9 @@
 # Configuration
 
 Versioned experiment, scenario, agent, task, and simulator configuration belongs
-in this domain. Configuration schemas and the MVP examples are introduced with
-the components that can validate them; PR 01 does not add speculative examples.
+in this domain. [`experiments/mvp.yaml`](experiments/mvp.yaml) is the canonical
+schema-version 1 PointNav example validated by `rh_core`.
+
+Episode initialization uses a complete 3D pose (`x/y/z` in metres and
+`roll/pitch/yaw` in radians). PointNav goals are 3D positions without target
+orientation semantics.

@@ -10,6 +10,9 @@ extend-exclude = [".build"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["rh_core"]
+
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]

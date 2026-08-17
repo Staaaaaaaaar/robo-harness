@@ -27,8 +27,15 @@ does not wrap those observations in a generic message.
 
 - Identifiers and request IDs are opaque non-empty strings. Validation belongs
   to the core/runtime layers rather than the generated interface classes.
-- `PointNavTask.start`, `PointNavTask.goal`, and `ResetEnv.start` use the `map`
-  frame in the MVP. Task start and goal frames must match.
+- `PointNavTask.goal` and `ResetEnv.initial_pose` use the `map` frame in the MVP.
+- `ResetEnv.initial_pose` is the complete 3D robot initialization pose. Its ROS
+  orientation is a normalized quaternion; adapters for planar sources explicitly
+  supply zero `z`, roll, and pitch before conversion.
+- PointNav describes a 3D target position and does not impose a target
+  orientation. A future PoseNav task must introduce explicit pose semantics
+  rather than reinterpreting the PointNav goal.
+- PointNav success distance is the 3D Euclidean distance in metres from the
+  configured robot tracking point (MVP: the `base_link` origin) to the goal.
 - Durations use seconds, distances use metres, and Episode metrics use
   simulation time and the `map` frame.
 - `ComponentStatus.stamp` records the last transition time. Repeated status
