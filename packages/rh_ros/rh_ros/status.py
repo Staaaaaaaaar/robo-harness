@@ -104,9 +104,10 @@ class StatusPublisher:
             ComponentStatus, topic, latched_control_qos()
         )
         self._message: ComponentStatus | None = None
+        self._heartbeat_enabled = True
         self._timer = node.create_timer(
             heartbeat_period,
-            self.publish,
+            self._publish_heartbeat,
             clock=Clock(clock_type=ClockType.STEADY_TIME),
         )
         self.transition(ComponentStatus.STARTING)
@@ -150,6 +151,17 @@ class StatusPublisher:
 
         if self._message is not None:
             self._publisher.publish(self._message)
+
+    def set_heartbeat_enabled(self, enabled: bool) -> None:
+        """Enable or suppress periodic heartbeats for controlled fault injection."""
+
+        if not isinstance(enabled, bool):
+            raise InvalidProtocolValueError("enabled must be a bool")
+        self._heartbeat_enabled = enabled
+
+    def _publish_heartbeat(self) -> None:
+        if self._heartbeat_enabled:
+            self.publish()
 
 
 class StatusMonitor:
