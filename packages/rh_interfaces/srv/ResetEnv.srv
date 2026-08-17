@@ -3,8 +3,9 @@ string request_id
 string experiment_id
 string episode_id
 
-# Requested robot root pose. RoboHarness MVP requires the "map" frame.
-geometry_msgs/PoseStamped start
+# Requested robot root pose. RoboHarness MVP requires the "map" frame. The
+# quaternion must be finite and normalized by the caller/adapter.
+geometry_msgs/PoseStamped initial_pose
 
 # Reproducibility seed supplied to the environment backend.
 int64 seed

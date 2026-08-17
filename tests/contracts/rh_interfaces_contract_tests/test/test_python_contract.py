@@ -78,8 +78,7 @@ def test_stable_numeric_constants() -> None:
             {
                 "experiment_id": "string",
                 "episode_id": "string",
-                "start": "geometry_msgs/PoseStamped",
-                "goal": "geometry_msgs/PoseStamped",
+                "goal": "geometry_msgs/PointStamped",
                 "success_radius_m": "double",
                 "timeout_s": "double",
                 "seed": "int64",
@@ -104,7 +103,7 @@ def test_stable_numeric_constants() -> None:
                 "request_id": "string",
                 "experiment_id": "string",
                 "episode_id": "string",
-                "start": "geometry_msgs/PoseStamped",
+                "initial_pose": "geometry_msgs/PoseStamped",
                 "seed": "int64",
             },
         ),

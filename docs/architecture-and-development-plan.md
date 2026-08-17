@@ -97,7 +97,7 @@ Simulator、Robot、Agent、Task、Evaluation 均通过 ROS contract、配置约
 | Agent | 消费标准观测、执行策略、输出命令、agent reset、任务局部状态；MVP 处理键盘输入 | simulator reset、spawn、Episode 调度、评估和持久化 |
 | Experiment container | control/evaluation plane 的部署边界 | 高频导航数据转发、simulator 或 policy 实现 |
 | Experiment Orchestrator | Experiment/Episode 权威状态、readiness 等待、reset 顺序、task 分配、start/abort、终止协调、失败策略 | 机器人实时控制、指标公式细节 |
-| Task Manager | 加载并校验 EpisodeSpec、构造 PointNav task、start/goal/timeout/success 条件 | 控制 robot、判定组件 readiness、保存结果 |
+| Task Manager | 加载并校验 EpisodeSpec、构造 PointNav goal/timeout/success 条件 | 控制 robot、判定组件 readiness、保存结果 |
 | Evaluator | 订阅 ground truth/episode/task，维护轨迹并计算 metrics、提出终止候选 | 发布 `cmd_vel`、改变 world、决定调度策略 |
 | Result Recorder | 原子写入 config、metadata、episode spec、events、trajectory、metrics 和 summary | 计算控制或拥有生命周期状态 |
 | Simulator Backend | Isaac app/extension、timeline、stage、physics、world、原生 ROS 2 Bridge 配置与 backend readiness | Agent、Task/Eval、跨 simulator 的机器人声明 |
@@ -218,8 +218,8 @@ Core contract 由 ROS interfaces、配置 schema 和行为测试共同定义；P
 
 - `ComponentStatus.msg`：`builtin_interfaces/Time stamp`、`string component_id`、`uint8 state`、`uint32 error_code`、`string detail`、`bool restart_required`；常量 `STARTING/RESETTING/READY/ERROR`。
 - `EpisodeState.msg`：`stamp`、`experiment_id`、`episode_id`、`uint64 sequence`、`uint8 state`、`uint8 termination_reason`、`string detail`；定义生命周期和终止原因常量。
-- `PointNavTask.msg`：`experiment_id`、`episode_id`、`geometry_msgs/PoseStamped start`、`goal`、`float64 success_radius_m`、`float64 timeout_s`、`int64 seed`。frame 必须相同且 MVP 为 `map`。
-- `ResetEnv.srv` request：`request_id`、`experiment_id`、`episode_id`、`start`、`seed`；response：`success`、`error_code`、`detail`。
+- `PointNavTask.msg`：`experiment_id`、`episode_id`、`geometry_msgs/PointStamped goal`、`float64 success_radius_m`、`float64 timeout_s`、`int64 seed`。PointNav goal 是 `map` frame 中的 3D position，不表达目标朝向。
+- `ResetEnv.srv` request：`request_id`、`experiment_id`、`episode_id`、`geometry_msgs/PoseStamped initial_pose`、`seed`；initial pose 完整表达 3D position 和 orientation，四元数必须有限且归一化；response：`success`、`error_code`、`detail`。
 - `ResetAgent.srv` request：`request_id`、`experiment_id`、`episode_id`；response 同上。
 - `StartEpisode.srv` request：`experiment_id`、`episode_id`；response：`accepted`、`detail`。
 - `AbortEpisode.srv` request：IDs、`reason`；response：`accepted`、`detail`。
@@ -256,7 +256,8 @@ Experiment
   └─ ordered Episode instances
        ├─ immutable EpisodeSpec
        │    ├─ Scenario/world reference
-       │    ├─ Task(type=pointnav, start, goal)
+       │    ├─ Initial pose(x, y, z, roll, pitch, yaw)
+       │    ├─ Task(type=pointnav, 3D goal)
        │    ├─ timeout/success radius
        │    └─ seed
        ├─ lifecycle state
@@ -280,16 +281,23 @@ experiment:
   episodes:
     - episode_id: "0000"
       scenario: warehouse_default
+      initial_pose:
+        frame_id: map
+        x: 1.0
+        y: 2.0
+        z: 0.4
+        roll: 0.0
+        pitch: 0.0
+        yaw: 0.0
       task:
         type: pointnav
-        start: {frame_id: map, x: 1.0, y: 2.0, yaw: 0.0}
-        goal: {frame_id: map, x: 8.0, y: 4.0, yaw: 0.0}
+        goal: {frame_id: map, x: 8.0, y: 4.0, z: 0.4}
         success_radius_m: 0.5
         timeout_s: 120.0
       seed: 42
 ```
 
-配置加载后转换为 typed dataclass，并一次性完成不依赖环境的静态验证：唯一 ID、有限数值、正 timeout/radius 和 frame 一致。静态无效配置直接拒绝启动 Experiment；依赖已加载 world 的检查（例如 start/goal 是否处于有效区域）在对应 Episode 的 PREPARING 阶段执行，失败时以 `INVALID_TASK` 结束该局且不允许机器人运动。
+配置加载后转换为 typed dataclass，并一次性完成不依赖环境的静态验证：唯一 ID、完整且有限的 initial pose、有限的 3D goal、正 timeout/radius 和 frame 一致。配置中的 position 单位为米，roll/pitch/yaw 单位为弧度；RPY 采用绕固定 X/Y/Z 轴的旋转，等价旋转矩阵为 `Rz(yaw) * Ry(pitch) * Rx(roll)`。二维数据源必须在适配层显式补齐缺失的 `z/roll/pitch`（通常置零），再转换成完整 pose。静态无效配置直接拒绝启动 Experiment；依赖已加载 world 的检查（例如 initial pose/goal 是否处于有效区域）在对应 Episode 的 PREPARING 阶段执行，失败时以 `INVALID_TASK` 结束该局且不允许机器人运动。
 
 ---
 
@@ -635,16 +643,16 @@ Env 只有在 Isaac、stage、Go2、physics、ROS bridge、clock、required topi
 
 ## Part XIII — PointNav MVP
 
-PointNav EpisodeSpec 必须包含唯一 ID、`map` frame 中的 start/goal、positive success radius、positive timeout、seed 和 execution mode。yaw 用于初始姿态，MVP success 只判断平面位置距离，不要求目标朝向。
+EpisodeSpec 必须包含唯一 ID、`map` frame 中的完整 3D initial pose、PointNav 3D goal、positive success radius、positive timeout、seed 和 execution mode。initial pose 的 orientation 属于环境初始化条件，不属于 PointNav 目标语义；PointNav 不包含目标 orientation，MVP success 判断机器人 tracking point（默认 `base_link` 原点）到 goal 的 3D 欧氏距离。未来若需要目标朝向，应新增语义明确的 PoseNav task/model/interface，而不是重新解释 PointNav 字段。
 
 1. Task Manager 在运动前验证 schema 和有限数值。
-2. Env reset 到 start 并确认 robot 静止；Agent reset；task 直接发布到 Env/Agent/Evaluator。
+2. Env reset 到 initial pose 并确认 robot 静止；Agent reset；task 直接发布到 Env/Agent/Evaluator。
 3. Episode 进入 READY，manual 模式等待 `/episode/start`。
 4. RUNNING 后 Keyboard Agent 才能驱动；Evaluator 计算 goal distance。
 5. 距离首次 `<= success_radius_m` 为 `SUCCESS`；simulation elapsed `>= timeout_s` 为 `TIMEOUT`。
 6. 同时发生时优先级为 runtime safety error、user abort、success、timeout；最终 reason 只提交一次，其他候选作为事件保存。
 
-MVP 不包含 SPL、语义目标、动态场景、复杂碰撞惩罚或 start/goal 自动采样。
+MVP 不包含 SPL、语义目标、动态场景、复杂碰撞惩罚或 initial pose/goal 自动采样。
 
 ---
 
@@ -733,7 +741,7 @@ CPU CI 至少执行 `colcon build`、lint/type checks、unit/interface tests、m
 **Out of Scope:** physics realism、Gazebo、Isaac compatibility layer。  
 **Files / Modules:** `tests/fixtures/mock_env/`、integration tests。  
 **ROS Interfaces:** Env status/reset、Episode state、`/clock`、`/robot/cmd_vel`、odom/TF。  
-**Tests:** readiness、idempotent reset、start pose、non-RUNNING zero gate、freeze/reset failure injection。  
+**Tests:** readiness、idempotent reset、完整 initial pose、non-RUNNING zero gate、freeze/reset failure injection。
 **Acceptance Criteria:** headless 测试 < 30 s 且 deterministic；fixture 明确标注不可作为 simulator 产品实现。  
 **Dependencies:** PR 04。  
 **Risks:** mock 与真实 contract 偏离；接口测试共享同一 black-box suite。  
@@ -772,7 +780,7 @@ CPU CI 至少执行 `colcon build`、lint/type checks、unit/interface tests、m
 **Out of Scope:** evaluator aggregation、自动 goal sampling、其他 Task。  
 **Files / Modules:** `tasks/pointnav/`、configs、tests。  
 **ROS Interfaces:** publish `PointNavTask`，验证 direct subscribers 和 transient-local behavior。  
-**Tests:** start/goal/frame/radius/timeout、late subscriber、episode mismatch。  
+**Tests:** 3D goal/frame/radius/timeout、late subscriber、episode mismatch。
 **Acceptance Criteria:** Env/Agent/Evaluator 可直接获得同一不可变 task；非法 goal 在运动前拒绝。  
 **Dependencies:** PR 03、PR 04。  
 **Risks:** Task 与 Eval 耦合；只共享 typed spec/termination predicate，不共享 recorder。  
