@@ -13,7 +13,7 @@ from rclpy.client import Client
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import Parameter
-from rh_interfaces.msg import ComponentStatus, EpisodeState, PointNavTask
+from rh_interfaces.msg import AgentTaskState, ComponentStatus, EpisodeState, PointNavTask
 from rh_interfaces.srv import ResetAgent
 from rosgraph_msgs.msg import Clock
 
@@ -171,6 +171,7 @@ def test_reset_task_state_and_simulation_clock_gate_the_script(
     client = _client_node("mock_agent_driver")
     executor = SingleThreadedExecutor()
     commands: list[Twist] = []
+    task_states: list[AgentTaskState] = []
     try:
         reset_client = client.create_client(ResetAgent, "/roboharness/agent/reset_episode")
         state_publisher = client.create_publisher(
@@ -181,6 +182,12 @@ def test_reset_task_state_and_simulation_clock_gate_the_script(
         )
         clock_publisher = client.create_publisher(Clock, "/clock", 1)
         client.create_subscription(Twist, "/robot/cmd_vel", commands.append, command_qos())
+        client.create_subscription(
+            AgentTaskState,
+            "/roboharness/agent/task_state",
+            task_states.append,
+            latched_control_qos(),
+        )
         executor.add_node(agent)
         executor.add_node(client)
         _spin_until(
@@ -191,9 +198,21 @@ def test_reset_task_state_and_simulation_clock_gate_the_script(
         )
 
         assert _call_reset(executor, reset_client, _reset_request()).success
-        _spin_until(executor, lambda: commands and _is_zero(commands[-1]))
+        _spin_until(
+            executor,
+            lambda: commands
+            and _is_zero(commands[-1])
+            and task_states
+            and task_states[-1].state == AgentTaskState.IDLE,
+        )
+        assert task_states[-1].sequence == 0
 
         state_publisher.publish(_episode_state(EpisodeState.RUNNING, 0))
+        _spin_until(
+            executor,
+            lambda: task_states[-1].state == AgentTaskState.RUNNING,
+        )
+        assert task_states[-1].sequence == 1
         task_publisher.publish(_task(episode_id="other"))
         clock_publisher.publish(_clock(10_000_000_000))
         _spin_for(executor, 0.1)
@@ -209,7 +228,12 @@ def test_reset_task_state_and_simulation_clock_gate_the_script(
         _spin_until(executor, lambda: _is_zero(commands[-1]))
 
         state_publisher.publish(_episode_state(EpisodeState.FINISHED, 1))
-        _spin_until(executor, lambda: _is_zero(commands[-1]))
+        _spin_until(
+            executor,
+            lambda: _is_zero(commands[-1])
+            and task_states[-1].state == AgentTaskState.IDLE,
+        )
+        assert task_states[-1].sequence == 2
         state_publisher.publish(_episode_state(EpisodeState.RUNNING, 0))
         clock_publisher.publish(_clock(11_000_000_000))
         _spin_for(executor, 0.1)

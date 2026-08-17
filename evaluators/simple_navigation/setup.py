@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = "rh_experiment"
+package_name = "rh_eval_simple_navigation"
 
 setup(
     name=package_name,
@@ -14,7 +14,7 @@ setup(
     zip_safe=True,
     maintainer="Staaaaaaaaar",
     maintainer_email="2300012435@stu.pku.edu.cn",
-    description="Single-Episode Experiment orchestrator for RoboHarness.",
+    description="Side-channel PointNav evaluator for RoboHarness.",
     license="NOASSERTION",
     tests_require=["pytest"],
 )

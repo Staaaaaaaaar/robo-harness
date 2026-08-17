@@ -17,7 +17,4 @@ setup(
     description="Validated PointNav Task module for RoboHarness.",
     license="NOASSERTION",
     tests_require=["pytest"],
-    entry_points={
-        "console_scripts": ["orchestrator = rh_pointnav.orchestrator:main"]
-    },
 )

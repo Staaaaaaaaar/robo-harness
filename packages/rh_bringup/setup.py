@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = "rh_experiment"
+package_name = "rh_bringup"
 
 setup(
     name=package_name,
@@ -14,7 +14,10 @@ setup(
     zip_safe=True,
     maintainer="Staaaaaaaaar",
     maintainer_email="2300012435@stu.pku.edu.cn",
-    description="Single-Episode Experiment orchestrator for RoboHarness.",
+    description="Explicit Experiment-container composition root for RoboHarness.",
     license="NOASSERTION",
     tests_require=["pytest"],
+    entry_points={
+        "console_scripts": ["experiment = rh_bringup.runtime:main"],
+    },
 )

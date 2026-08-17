@@ -14,6 +14,10 @@ the same ROS topics, services, TF, and clock used by real implementations.
   verify the authoritative single-Episode lifecycle and failure coordination.
 - `rh_pointnav_integration_tests` verifies direct immutable task delivery,
   transient-local late join, and the reset/task/READY preparation order.
+- `rh_simple_navigation_integration_tests` verifies fixed-trajectory metrics,
+  Agent completion plus ground-truth confirmation, goal pass-through behavior,
+  evaluator-to-orchestrator termination, no control publisher, and frozen-clock
+  failure handling.
 
 The mock fixtures remain deterministic protocol probes; passing these tests is
 not evidence of simulator physics or robot compatibility.

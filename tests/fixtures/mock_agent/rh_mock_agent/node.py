@@ -13,7 +13,7 @@ from rcl_interfaces.msg import SetParametersResult
 from rclpy.clock import Clock, ClockType
 from rclpy.node import Node
 from rclpy.parameter import Parameter
-from rh_interfaces.msg import ComponentStatus, EpisodeState, PointNavTask
+from rh_interfaces.msg import AgentTaskState, ComponentStatus, EpisodeState, PointNavTask
 from rh_interfaces.srv import ResetAgent
 from rosgraph_msgs.msg import Clock as ClockMessage
 
@@ -88,6 +88,12 @@ class MockAgentNode(Node):
             "/robot/cmd_vel",
             command_qos(),
         )
+        self._task_state_publisher = self.create_publisher(
+            AgentTaskState,
+            "/roboharness/agent/task_state",
+            latched_control_qos(),
+        )
+        self._task_state = AgentTaskState()
         self._task_subscription = self.create_subscription(
             PointNavTask,
             "/roboharness/task/pointnav",
@@ -287,6 +293,11 @@ class MockAgentNode(Node):
 
         self._model.reset(request.experiment_id, request.episode_id)
         self._sequence_guard.activate(request.experiment_id, request.episode_id)
+        self._task_state.experiment_id = request.experiment_id
+        self._task_state.episode_id = request.episode_id
+        self._task_state.sequence = 0
+        self._task_state.state = AgentTaskState.IDLE
+        self._publish_task_state(AgentTaskState.IDLE, "episode reset complete")
         self._publish_zero()
         self._status.transition(ComponentStatus.READY, detail="episode reset complete")
         return ResetOutcome(True)
@@ -339,7 +350,15 @@ class MockAgentNode(Node):
             self._model.set_episode_running(False)
             self._publish_zero()
             return
-        self._model.set_episode_running(state.value == EpisodeState.RUNNING)
+        running = state.value == EpisodeState.RUNNING
+        self._model.set_episode_running(running)
+        if running and self._task_state.state != AgentTaskState.RUNNING:
+            self._publish_task_state(AgentTaskState.RUNNING, "agent execution started")
+        elif (
+            state.value in {EpisodeState.TERMINATING, EpisodeState.FINISHED}
+            and self._task_state.state == AgentTaskState.RUNNING
+        ):
+            self._publish_task_state(AgentTaskState.IDLE, "episode no longer running")
         self._publish_command()
 
     def _on_clock(self, message: ClockMessage) -> None:
@@ -385,6 +404,14 @@ class MockAgentNode(Node):
     def _publish_zero(self) -> None:
         message = Twist()
         self._command_publisher.publish(message)
+
+    def _publish_task_state(self, state: int, detail: str) -> None:
+        if self._task_state.state != state and self._task_state.experiment_id:
+            self._task_state.sequence += 1
+        self._task_state.stamp = self.get_clock().now().to_msg()
+        self._task_state.state = state
+        self._task_state.detail = detail
+        self._task_state_publisher.publish(self._task_state)
 
     def _publish_command(self) -> None:
         command = self._model.snapshot.command

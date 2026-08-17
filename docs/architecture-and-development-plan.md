@@ -51,8 +51,8 @@ Simulator、Robot、Agent、Task、Evaluation 均通过 ROS contract、配置约
 ```text
                          ┌─────────────────────────────────┐
                          │           experiment            │
-                         │ orchestrator / task / evaluator │
-                         │ recorder                        │
+                         │ bringup -> orchestrator         │
+                         │ task / evaluator / recorder     │
                          └──────────┬──────────────┬───────┘
                                     │              │
                           control   │              │ evaluation
@@ -96,6 +96,7 @@ Simulator、Robot、Agent、Task、Evaluation 均通过 ROS contract、配置约
 | Env | 完整 Environment Backend：simulator、physics、world、robot binding、sensors、clock、底层运控、命令执行、env reset、非 RUNNING 时的最终速度门控 | agent policy、调度、指标汇总、结果持久化 |
 | Agent | 消费标准观测、执行策略、输出命令、agent reset、任务局部状态；MVP 处理键盘输入 | simulator reset、spawn、Episode 调度、评估和持久化 |
 | Experiment container | control/evaluation plane 的部署边界 | 高频导航数据转发、simulator 或 policy 实现 |
+| Bringup | 选择兼容的 Task/Evaluator/Recorder 配置组合，构造并启动中控业务 | Task 语义、评估公式、生命周期规则 |
 | Experiment Orchestrator | Experiment/Episode 权威状态、readiness 等待、reset 顺序、task 分配、start/abort、终止协调、失败策略 | 机器人实时控制、指标公式细节 |
 | Task Manager | 加载并校验 EpisodeSpec、构造 PointNav goal/timeout/success 条件 | 控制 robot、判定组件 readiness、保存结果 |
 | Evaluator | 订阅 ground truth/episode/task，维护轨迹并计算 metrics、提出终止候选 | 发布 `cmd_vel`、改变 world、决定调度策略 |
@@ -204,6 +205,7 @@ Core contract 由 ROS interfaces、配置 schema 和行为测试共同定义；P
 |---|---|---|---|---|
 | `/roboharness/env/status` | `ComponentStatus.msg` topic | env | experiment | 连续/末值 readiness；topic 支持异步观察和 late join |
 | `/roboharness/agent/status` | `ComponentStatus.msg` topic | agent | experiment | 同上 |
+| `/roboharness/agent/task_state` | `AgentTaskState.msg` topic | agent | experiment、evaluator | Agent 对本局导航执行的状态与终态声明；独立于组件健康状态 |
 | `/roboharness/env/reset_episode` | `ResetEnv.srv` | env | experiment | 有明确请求、完成与错误结果，适合 service |
 | `/roboharness/agent/reset_episode` | `ResetAgent.srv` | agent | experiment | 同上 |
 | `/roboharness/episode/state` | `EpisodeState.msg` topic | experiment | env、agent、evaluator | 权威广播；多个消费者和 late join |
@@ -217,6 +219,7 @@ Core contract 由 ROS interfaces、配置 schema 和行为测试共同定义；P
 ### 7.3 初版自定义接口字段
 
 - `ComponentStatus.msg`：`builtin_interfaces/Time stamp`、`string component_id`、`uint8 state`、`uint32 error_code`、`string detail`、`bool restart_required`；常量 `STARTING/RESETTING/READY/ERROR`。
+- `AgentTaskState.msg`：`stamp`、`experiment_id`、`episode_id`、`uint64 sequence`、`uint8 state`、`string detail`；常量 `IDLE/RUNNING/SUCCEEDED/FAILED`。它表达 Agent 对导航执行的判断，不代替组件健康状态，也不直接决定 benchmark success。Agent 必须先停止产生非零控制命令并保持停止，之后才能发布 `SUCCEEDED`。
 - `EpisodeState.msg`：`stamp`、`experiment_id`、`episode_id`、`uint64 sequence`、`uint8 state`、`uint8 termination_reason`、`string detail`；定义生命周期和终止原因常量。
 - `PointNavTask.msg`：`experiment_id`、`episode_id`、`geometry_msgs/PointStamped goal`、`float64 success_radius_m`、`float64 timeout_s`、`int64 seed`。PointNav goal 是 `map` frame 中的 3D position，不表达目标朝向。
 - `ResetEnv.srv` request：`request_id`、`experiment_id`、`episode_id`、`geometry_msgs/PoseStamped initial_pose`、`seed`；initial pose 完整表达 3D position 和 orientation，四元数必须有限且归一化；response：`success`、`error_code`、`detail`。
@@ -242,7 +245,7 @@ Core contract 由 ROS interfaces、配置 schema 和行为测试共同定义；P
 
 ### 7.5 QoS、超时和发现
 
-- status、episode state、PointNav task、episode result：reliable + transient_local + keep_last 1。
+- status、episode state、Agent task state、PointNav task、episode result：reliable + transient_local + keep_last 1。
 - reset/start/abort：service 默认 reliable；客户端有显式 discovery timeout 和 call timeout。
 - 高频 sensor：ROS sensor-data QoS；`cmd_vel` depth 1，Env 还应实现 simulation-time command watchdog。
 - 默认单机同一 `ROS_DOMAIN_ID`，三个 service 共享 Docker network；固定同一 RMW 实现。若 DDS multicast 在主机/容器环境不可用，提供版本化 Fast DDS/Cyclone DDS discovery 配置，而不是引入第二套协议。
@@ -269,7 +272,7 @@ Experiment
 - Episode：EpisodeSpec 的一次执行，拥有状态、事件和结果。
 - Scenario：world/scene 与可选静态参数的引用，不等同于 Task。
 - Task：目标语义；MVP 只有 PointNav，不创建深层继承结构。
-- Termination Condition：goal distance、timeout、abort 或 runtime error；orchestrator 汇总候选并决定唯一 reason。
+- Termination Condition：Agent 导航终态与 evaluator ground-truth 确认、timeout、abort 或 runtime error；orchestrator 汇总候选并决定唯一 reason。
 
 MVP YAML：
 
@@ -306,14 +309,14 @@ experiment:
 数据分层：
 
 1. Raw telemetry：按固定频率采样的 timestamp、pose，可选 collision signal；不默认复制全部 camera/lidar。
-2. Events：状态迁移、reset、task、start、goal reached、timeout、abort、errors，JSONL 追加写。
+2. Events：状态迁移、reset、task、start、Agent 导航终态、goal confirmation、timeout、abort、errors，JSONL 追加写。
 3. Metrics：从 telemetry/spec 计算的单局数值。
 4. Episode result：spec、termination reason、metrics、artifact references 和完整性状态。
 5. Experiment summary：总局数、成功/失败/超时计数及聚合指标。
 
 MVP metrics：`success`、`elapsed_time_s`、`path_length_m`、`final_distance_to_goal_m`、`timeout`、`termination_reason`。只有 Isaac 能低成本稳定提供碰撞事件时才加入 `collision_count`，它不阻塞 v0.1。
 
-计算约定：使用 simulation time；path length 对 `map` frame 的采样 pose 做相邻欧氏距离累加，剔除 reset 跳变且记录采样频率；success 是 RUNNING 期间首次满足 goal distance 阈值。evaluator 产生终止候选，orchestrator 提交权威终止状态。
+计算约定：使用 simulation time；path length 对 `map` frame 的采样 pose 做相邻欧氏距离累加，剔除 reset 跳变且记录采样频率。Agent 必须先发布 `SUCCEEDED`，evaluator 再以该时刻或之后的第一份 `map` frame ground-truth pose 确认机器人仍在 success radius 内；仅经过目标区域不构成 success。evaluator 产生终止候选，orchestrator 提交权威终止状态。
 
 结果布局：
 
@@ -355,7 +358,8 @@ roboharness/
 │  ├─ rh_interfaces/                    # ament_cmake: msg/srv only
 │  ├─ rh_core/                          # ament_python: ROS-independent domain
 │  ├─ rh_ros/                           # ament_python: ROS transport helpers
-│  └─ rh_experiment/                    # orchestrator + recorder
+│  ├─ rh_experiment/                    # generic orchestrator + recorder
+│  └─ rh_bringup/                       # concrete Experiment composition root
 │
 ├─ simulators/                          # Simulator backends；Robot 位于内部
 │  └─ isaac_sim/
@@ -444,7 +448,8 @@ roboharness/
 - `rh_interfaces` 是三个容器共享的 wire contract，只包含 RoboHarness 实验语义 `msg/srv`，没有 node 或实现代码。
 - `rh_core` 包含 Experiment/Episode typed models、配置、状态机、termination policy 和 result schema；核心模块不得 import `rclpy`、Isaac 或具体 implementation。
 - `rh_ros` 只实现 QoS、status heartbeat、reset idempotency、service timeout、Episode sequence guard 和 message/model conversion，不拥有业务状态。
-- `rh_experiment` 实现 orchestrator、Task/Evaluator 装配和 recorder。MVP 使用一个主要 ROS node，Task Manager、Evaluator、Recorder 优先作为进程内对象。
+- `rh_experiment` 实现通用 orchestrator、Task/Evaluator factory boundary 和 recorder，不依赖具体 Task/Evaluator。
+- `rh_bringup` 是 Experiment 容器唯一 composition root，显式选择兼容的 Task/Evaluator/Recorder 实现并启动中控。MVP 使用一个主要 ROS node，Task Manager、Evaluator、Recorder 优先作为进程内对象。
 
 依赖只能向稳定层流动：
 
@@ -453,10 +458,12 @@ rh_interfaces       rh_core
        \              /
               rh_ros
                  \
-              rh_experiment -> selected task/evaluator
+              rh_experiment    concrete task/evaluator
+                       \          /
+                         rh_bringup
 ```
 
-`rh_interfaces` 和 `rh_core` 不依赖 simulator、agent、task 或 evaluator；具体实现不得被 `packages` 静态反向引用，选择发生在配置/factory 组合点。
+`rh_interfaces`、`rh_core`、`rh_ros` 和 `rh_experiment` 不依赖 simulator、agent、task 或 evaluator；只有作为 composition root 的 `rh_bringup` 可以静态引用具体实现，选择集中发生在其显式 factory 组合点。
 
 ### 10.2 Four peer extension domains
 
@@ -633,6 +640,7 @@ Env 只有在 Isaac、stage、Go2、physics、ROS bridge、clock、required topi
 | Agent reset fails/times out | service response/deadline | `AGENT_ERROR` | no | usually |
 | Isaac clock freezes | wall-clock watchdog | `ENV_ERROR` | no | yes |
 | No `cmd_vel` | Env watchdog/event | 保持零速，最终可 timeout | yes | no |
+| Agent reports navigation failure | Agent task state | `FAILURE` | yes | no |
 | Episode timeout | evaluator/orchestrator | `TIMEOUT` | yes | no |
 | Invalid goal/spec | Task Manager | `INVALID_TASK` | configurable, default yes | no |
 | User abort | abort service | `ABORTED` | yes | no |
@@ -648,8 +656,8 @@ EpisodeSpec 必须包含唯一 ID、`map` frame 中的完整 3D initial pose、P
 1. Task Manager 在运动前验证 schema 和有限数值。
 2. Env reset 到 initial pose 并确认 robot 静止；Agent reset；task 直接发布到 Env/Agent/Evaluator。
 3. Episode 进入 READY，manual 模式等待 `/episode/start`。
-4. RUNNING 后 Keyboard Agent 才能驱动；Evaluator 计算 goal distance。
-5. 距离首次 `<= success_radius_m` 为 `SUCCESS`；simulation elapsed `>= timeout_s` 为 `TIMEOUT`。
+4. RUNNING 后 Agent 才能驱动并发布本局 `RUNNING`；Evaluator 持续计算 ground-truth goal distance，但进入半径本身不终止 Episode。
+5. Agent 认为导航完成时先停止其控制逻辑并发布 `SUCCEEDED`；Evaluator 用该时刻或之后的第一份 ground-truth pose 确认距离 `<= success_radius_m` 后才提交 `SUCCESS`。Agent 发布 `FAILED` 则提交 `FAILURE`；未发布终态且 simulation elapsed `>= timeout_s` 为 `TIMEOUT`。
 6. 同时发生时优先级为 runtime safety error、user abort、success、timeout；最终 reason 只提交一次，其他候选作为事件保存。
 
 MVP 不包含 SPL、语义目标、动态场景、复杂碰撞惩罚或 initial pose/goal 自动采样。
@@ -789,11 +797,11 @@ CPU CI 至少执行 `colcon build`、lint/type checks、unit/interface tests、m
 #### PR 09 — Simple Evaluation
 
 **Goal:** 以旁路 observer 计算 PointNav MVP metrics。  
-**Changes:** trajectory sampler、goal/timeout candidates、metric functions、simulation-time handling。  
+**Changes:** trajectory sampler、Agent navigation-state handshake、goal confirmation/timeout candidates、metric functions、simulation-time handling、Bringup composition root。
 **Out of Scope:** recorder、碰撞指标、控制命令干预。  
 **Files / Modules:** `evaluators/simple_navigation/`、unit/integration tests。  
-**ROS Interfaces:** subscribe task/state/odom/clock；向 orchestrator 提交进程内 termination candidate。  
-**Tests:** path length、success radius、timeout、reset jump exclusion、out-of-order stamps。  
+**ROS Interfaces:** subscribe task/episode state/agent task state/odom/clock；向 orchestrator 提交进程内 termination candidate。
+**Tests:** path length、Agent completion confirmation、goal pass-through、success radius、timeout、reset jump exclusion、out-of-order stamps。
 **Acceptance Criteria:** Part IX 指标对固定轨迹给出稳定结果；模块从不 publish `cmd_vel`。  
 **Dependencies:** PR 07、PR 08。  
 **Risks:** sim time 停止导致挂起；wall watchdog 由 orchestrator 处理并有测试。  

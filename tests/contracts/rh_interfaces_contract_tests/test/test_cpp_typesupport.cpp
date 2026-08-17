@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "rh_interfaces/msg/agent_task_state.hpp"
 #include "rh_interfaces/msg/component_status.hpp"
 #include "rh_interfaces/msg/episode_result.hpp"
 #include "rh_interfaces/msg/episode_state.hpp"
@@ -13,6 +14,12 @@
 
 TEST(RhInterfacesContract, StableNumericConstants)
 {
+  using AgentTaskState = rh_interfaces::msg::AgentTaskState;
+  EXPECT_EQ(AgentTaskState::IDLE, 0u);
+  EXPECT_EQ(AgentTaskState::RUNNING, 1u);
+  EXPECT_EQ(AgentTaskState::SUCCEEDED, 2u);
+  EXPECT_EQ(AgentTaskState::FAILED, 3u);
+
   using ComponentStatus = rh_interfaces::msg::ComponentStatus;
   EXPECT_EQ(ComponentStatus::STARTING, 0u);
   EXPECT_EQ(ComponentStatus::RESETTING, 1u);
@@ -38,6 +45,10 @@ TEST(RhInterfacesContract, StableNumericConstants)
 
 TEST(RhInterfacesContract, CppTypesupportIsLinked)
 {
+  EXPECT_NE(
+    rosidl_typesupport_cpp::get_message_type_support_handle<
+      rh_interfaces::msg::AgentTaskState>(),
+    nullptr);
   EXPECT_NE(
     rosidl_typesupport_cpp::get_message_type_support_handle<
       rh_interfaces::msg::ComponentStatus>(),
@@ -75,6 +86,11 @@ TEST(RhInterfacesContract, CppTypesupportIsLinked)
 
 TEST(RhInterfacesContract, GeneratedCppTypesAreUsable)
 {
+  rh_interfaces::msg::AgentTaskState agent_task_state;
+  agent_task_state.experiment_id = "experiment-1";
+  agent_task_state.state = agent_task_state.SUCCEEDED;
+  EXPECT_EQ(agent_task_state.state, agent_task_state.SUCCEEDED);
+
   rh_interfaces::msg::ComponentStatus status;
   status.component_id = "env";
   status.state = status.READY;
