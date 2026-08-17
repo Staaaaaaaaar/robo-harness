@@ -8,5 +8,7 @@ specific simulator, robot, agent, task, or evaluator implementation.
   ROS wire contract.
 - [`rh_core`](rh_core/README.md) owns ROS-independent configuration, domain
   models, lifecycle rules, and termination policy.
+- [`rh_ros`](rh_ros/README.md) owns reusable ROS runtime QoS, heartbeat,
+  idempotency, deadline, sequence-filtering, and model/message adapters.
 
-`rh_ros` and `rh_experiment` are introduced by their roadmap PRs.
+`rh_experiment` is introduced by its roadmap PR.

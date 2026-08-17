@@ -11,7 +11,7 @@ extend-exclude = [".build"]
 select = ["E", "F", "I", "UP"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["rh_core"]
+known-first-party = ["rh_core", "rh_ros"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
