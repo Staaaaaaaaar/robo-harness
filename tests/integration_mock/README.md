@@ -10,6 +10,8 @@ the same ROS topics, services, TF, and clock used by real implementations.
 - `rh_mock_agent_integration_tests` independently drives the Agent with
   test-owned task, Episode state, and simulation-clock publishers to verify
   command gating, Episode isolation, and controlled failure behavior.
+- `rh_experiment_integration_tests` uses protocol-only Env and Agent stubs to
+  verify the authoritative single-Episode lifecycle and failure coordination.
 
 The mock fixtures remain deterministic protocol probes; passing these tests is
 not evidence of simulator physics or robot compatibility.

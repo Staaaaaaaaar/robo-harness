@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>rh_experiment_integration_tests</name>
+  <version>0.0.0</version>
+  <description>Black-box ROS tests for the single-Episode orchestrator.</description>
+  <maintainer email="2300012435@stu.pku.edu.cn">Staaaaaaaaar</maintainer>
+  <!-- Project licensing and release versioning are finalized by roadmap PR 18. -->
+  <license>NOASSERTION</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <test_depend>ament_cmake_pytest</test_depend>
+  <test_depend>rclpy</test_depend>
+  <test_depend>rh_core</test_depend>
+  <test_depend>rh_experiment</test_depend>
+  <test_depend>rh_interfaces</test_depend>
+  <test_depend>rh_ros</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
