@@ -8,7 +8,12 @@ import rclpy
 from rclpy.executors import SingleThreadedExecutor
 from rh_interfaces.msg import ComponentStatus
 
-from rh_ros import StatusMonitor, StatusPublisher, StatusTracker
+from rh_ros import (
+    InvalidProtocolValueError,
+    StatusMonitor,
+    StatusPublisher,
+    StatusTracker,
+)
 
 
 class FakeSteadyClock:
@@ -47,6 +52,18 @@ def test_tracker_ignores_malformed_status() -> None:
     assert not tracker.update(_status("", ComponentStatus.READY))
     assert not tracker.update(_status("env", 255))
     assert tracker.latest("env") is None
+
+
+def test_heartbeat_fault_injection_requires_a_bool(ros_context: None) -> None:
+    node = rclpy.create_node("status_heartbeat_control_test")
+    try:
+        publisher = StatusPublisher(node, "/roboharness/test/heartbeat_control", "env")
+        with pytest.raises(InvalidProtocolValueError, match="enabled must be a bool"):
+            publisher.set_heartbeat_enabled(1)  # type: ignore[arg-type]
+        publisher.set_heartbeat_enabled(False)
+        publisher.set_heartbeat_enabled(True)
+    finally:
+        node.destroy_node()
 
 
 @pytest.fixture
