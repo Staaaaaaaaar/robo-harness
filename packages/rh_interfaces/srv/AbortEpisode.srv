@@ -1,0 +1,12 @@
+string experiment_id
+string episode_id
+
+# Human-readable operator intent. The committed result uses EpisodeState.ABORTED.
+string reason
+---
+
+# Acceptance only acknowledges the transition request; finalization is asynchronous.
+bool accepted
+
+# Short human-readable context; clients must not parse this field.
+string detail
