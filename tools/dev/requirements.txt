@@ -1,0 +1,2 @@
+# Tools installed only in the development image, not in runtime ROS packages.
+ruff==0.11.13

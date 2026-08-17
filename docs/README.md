@@ -5,6 +5,7 @@
 ## 当前文档
 
 - [软件架构与分阶段 PR 开发规划](architecture-and-development-plan.md)：项目定义、运行架构、ROS 2 接口、生命周期、仓库与 Docker 结构、测试策略、逐 PR 路线图及依赖关系。
+- [ADR 0001：开发平台基线](adr/0001-development-platform.md)：固定 Ubuntu 22.04、ROS 2 Humble、Python 3.10 和容器唯一开发路径。
 
 ## 文档约定
 

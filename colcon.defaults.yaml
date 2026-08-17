@@ -1,0 +1,22 @@
+"":
+  log-base: .build/colcon/log
+
+build:
+  build-base: .build/colcon/build
+  install-base: .build/colcon/install
+  symlink-install: true
+  cmake-args:
+    - -DCMAKE_C_COMPILER_LAUNCHER=ccache
+    - -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+  event-handlers:
+    - console_cohesion+
+
+test:
+  build-base: .build/colcon/build
+  install-base: .build/colcon/install
+  test-result-base: .build/colcon/test-results
+  event-handlers:
+    - console_cohesion+
+
+test-result:
+  test-result-base: .build/colcon/test-results

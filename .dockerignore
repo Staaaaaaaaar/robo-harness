@@ -1,0 +1,13 @@
+.git
+.github
+.build
+.cache
+.venv
+build
+install
+log
+logs
+results
+__pycache__
+*.pyc
+deployment/env/.env
