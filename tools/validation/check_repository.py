@@ -22,7 +22,9 @@ REQUIRED_PATHS = (
     "configs/README.md",
     "deployment/README.md",
     "deployment/compose/compose.dev.yaml",
+    "deployment/compose/compose.mock.yaml",
     "deployment/docker/dev/Dockerfile",
+    "deployment/docker/mock-runtime/Dockerfile",
     "docs/adr/0001-development-platform.md",
     "evaluators/README.md",
     "packages/README.md",
@@ -31,6 +33,8 @@ REQUIRED_PATHS = (
     "tasks/README.md",
     "tests/README.md",
     "tools/README.md",
+    "tools/e2e/run_mock_compose.sh",
+    "tools/e2e/validate_mock_result.py",
 )
 
 MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")

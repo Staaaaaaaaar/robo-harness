@@ -1,0 +1,59 @@
+name: roboharness-mock
+
+x-runtime: &runtime
+  image: ${RH_MOCK_RUNTIME_IMAGE}
+  build:
+    context: ../..
+    dockerfile: deployment/docker/mock-runtime/Dockerfile
+    target: mock-runtime
+    args:
+      ROS_BASE_IMAGE: ${RH_ROS_BASE_IMAGE}
+      USER_UID: ${HOST_UID:-1000}
+      USER_GID: ${HOST_GID:-1000}
+  init: true
+  restart: "no"
+  stop_grace_period: 5s
+  environment: &runtime-environment
+    PYTHONUNBUFFERED: "1"
+    ROS_DISTRO: ${RH_ROS_DISTRO}
+    ROS_DOMAIN_ID: ${RH_MOCK_ROS_DOMAIN_ID:-42}
+    ROS_LOCALHOST_ONLY: "0"
+  networks:
+    - roboharness
+
+services:
+  env:
+    <<: *runtime
+    command: ["ros2", "run", "rh_mock_env", "mock_env"]
+
+  agent:
+    <<: *runtime
+    command: ["ros2", "run", "rh_mock_agent", "mock_agent"]
+
+  experiment:
+    <<: *runtime
+    command:
+      - ros2
+      - run
+      - rh_bringup
+      - experiment
+      - --profile
+      - pointnav_simple
+      - --ros-args
+      - -p
+      - config_path:=/config/experiment.yaml
+      - -p
+      - experiment_id:=${RH_EXPERIMENT_ID:-mock-compose}
+      - -p
+      - results_root:=/results
+      - -p
+      - env_component_id:=mock_env
+      - -p
+      - agent_component_id:=mock_agent
+    volumes:
+      - ../../configs/experiments/mock_compose.yaml:/config/experiment.yaml:ro
+      - ${RH_RESULTS_DIR:-../../.build/mock-e2e}:/results
+
+networks:
+  roboharness:
+    driver: bridge

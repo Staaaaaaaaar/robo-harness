@@ -22,3 +22,21 @@ jobs:
 
       - name: Run repository, Colcon, and test checks
         run: make dev-check
+
+  cpu-mock-compose-e2e:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run three-container mock stack
+        run: make mock-e2e
+
+      - name: Upload mock result and service logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-mock-compose-e2e
+          path: .build/mock-e2e
+          if-no-files-found: ignore

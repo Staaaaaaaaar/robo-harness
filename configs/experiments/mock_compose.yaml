@@ -1,0 +1,65 @@
+schema_version: 1
+experiment:
+  name: mock_compose
+  execution_mode: automatic
+  episodes:
+    - episode_id: compose-0000
+      scenario: deterministic_mock
+      initial_pose:
+        frame_id: map
+        x: 0.0
+        y: 0.0
+        z: 0.4
+        roll: 0.0
+        pitch: 0.0
+        yaw: 0.0
+      task:
+        type: pointnav
+        goal:
+          frame_id: map
+          x: 10.0
+          y: 0.0
+          z: 0.4
+        success_radius_m: 0.25
+        timeout_s: 0.5
+      seed: 100
+    - episode_id: compose-0001
+      scenario: deterministic_mock
+      initial_pose:
+        frame_id: map
+        x: 1.0
+        y: 0.0
+        z: 0.4
+        roll: 0.0
+        pitch: 0.0
+        yaw: 0.0
+      task:
+        type: pointnav
+        goal:
+          frame_id: map
+          x: 11.0
+          y: 0.0
+          z: 0.4
+        success_radius_m: 0.25
+        timeout_s: 0.5
+      seed: 101
+    - episode_id: compose-0002
+      scenario: deterministic_mock
+      initial_pose:
+        frame_id: map
+        x: 2.0
+        y: 0.0
+        z: 0.4
+        roll: 0.0
+        pitch: 0.0
+        yaw: 0.0
+      task:
+        type: pointnav
+        goal:
+          frame_id: map
+          x: 12.0
+          y: 0.0
+          z: 0.4
+        success_radius_m: 0.25
+        timeout_s: 0.5
+      seed: 102
