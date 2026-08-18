@@ -6,8 +6,9 @@ RoboHarness 是面向机器人导航任务的快速实验、自动运行与统�
 
 ## 当前状态
 
-项目处于工程基础阶段，PR 01 仅提供可复现的 monorepo 开发、构建和检查
-入口，尚未实现运行时功能。当前 MVP 严格限定为：
+项目正在逐步实现 MVP。当前已经提供可复现的 monorepo 开发环境、核心协议、
+实验协调与结果记录，以及由三个独立容器组成的 CPU mock 参考运行链。MVP
+严格限定为：
 
 - Simulator：NVIDIA Isaac Sim
 - Robot：Unitree Go2
@@ -72,13 +73,23 @@ make dev-test
 make dev-lint
 ```
 
+运行并验证三容器 CPU mock 链路：
+
+```bash
+make mock-e2e
+```
+
 开发容器只是临时工具环境，不属于 RoboHarness 的运行服务。详细说明见
 [部署与开发环境](deployment/README.md)和
 [开发平台 ADR](docs/adr/0001-development-platform.md)。
 
-## 预计运行方式
+## CPU mock 运行方式
 
-以下命令描述 MVP 完成后的三服务目标体验，当前尚不可执行：
+`make mock-e2e` 会构建精简 runtime 镜像，启动 `env`、`agent`、`experiment`
+三个独立容器，等待 ROS 图和三个 Episode 结果完成，校验产物后自动清理服务。
+结果和容器日志保存在 `.build/mock-e2e/`。
+
+面向 Isaac Sim 的完整 MVP 运行方式仍将在后续 PR 中补齐：
 
 ```bash
 cp deployment/env/.env.example deployment/env/.env
@@ -86,7 +97,7 @@ docker compose --env-file deployment/env/.env \
   -f deployment/compose/compose.yaml up --build
 ```
 
-目标运行链：
+运行链：
 
 ```text
 services start

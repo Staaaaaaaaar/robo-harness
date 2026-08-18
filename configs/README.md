@@ -11,3 +11,8 @@ orientation semantics.
 PR 08 validates the `task.type: pointnav` section through `rh_pointnav` before
 the orchestrator starts component coordination. The canonical example remains
 the single source of truth rather than duplicating task-only YAML fragments.
+
+[`experiments/mock_compose.yaml`](experiments/mock_compose.yaml) is the bounded
+automatic profile used by the PR 12 CPU runtime smoke test. Its three far-away
+goals intentionally produce deterministic `TIMEOUT` results with the reference
+mock Agent; it is validation input, not the canonical user-facing example.
