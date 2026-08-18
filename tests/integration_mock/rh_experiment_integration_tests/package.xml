@@ -3,7 +3,7 @@
 <package format="3">
   <name>rh_experiment_integration_tests</name>
   <version>0.0.0</version>
-  <description>Black-box ROS tests for the single-Episode orchestrator.</description>
+  <description>Black-box ROS tests for the Experiment orchestrator.</description>
   <maintainer email="2300012435@stu.pku.edu.cn">Staaaaaaaaar</maintainer>
   <!-- Project licensing and release versioning are finalized by roadmap PR 18. -->
   <license>NOASSERTION</license>
@@ -13,8 +13,12 @@
   <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>rclpy</test_depend>
   <test_depend>rh_core</test_depend>
+  <test_depend>rh_eval_simple_navigation</test_depend>
   <test_depend>rh_experiment</test_depend>
   <test_depend>rh_interfaces</test_depend>
+  <test_depend>rh_mock_agent</test_depend>
+  <test_depend>rh_mock_env</test_depend>
+  <test_depend>rh_pointnav</test_depend>
   <test_depend>rh_ros</test_depend>
 
   <export>

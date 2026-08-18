@@ -26,9 +26,15 @@ class _Publisher:
 class _Node:
     def __init__(self) -> None:
         self.publisher = _Publisher()
+        self.destroy_count = 0
 
     def create_publisher(self, *args: object) -> _Publisher:
         return self.publisher
+
+    def destroy_publisher(self, publisher: _Publisher) -> bool:
+        assert publisher is self.publisher
+        self.destroy_count += 1
+        return True
 
     @staticmethod
     def get_clock() -> _Clock:
@@ -58,3 +64,7 @@ def test_republication_preserves_one_immutable_wire_snapshot() -> None:
     assert len(node.publisher.messages) == 2
     assert node.publisher.messages[0] is node.publisher.messages[1]
     assert node.publisher.messages[1].goal.point.x == 4.0
+
+    publisher.close()
+    publisher.close()
+    assert node.destroy_count == 1

@@ -15,6 +15,8 @@ class EpisodeTaskPublisher(Protocol):
 
     def publish(self) -> None: ...
 
+    def close(self) -> None: ...
+
 
 EpisodeTaskPublisherFactory = Callable[
     [Node, str, EpisodeSpec],
