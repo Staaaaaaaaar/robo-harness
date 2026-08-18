@@ -17,14 +17,19 @@ from rosgraph_msgs.msg import Clock
 from tf2_geometry_msgs import do_transform_point
 from tf2_ros import Buffer, TransformException, TransformListener
 
-from rh_core import EpisodeSpec, EpisodeState, Point3D
+from rh_core import EpisodeSpec, EpisodeState, Point3D, TerminationReason
 from rh_eval_simple_navigation.evaluation import (
     NavigationMetrics,
     SimpleNavigationEvaluation,
     TerminationCandidate,
 )
 from rh_eval_simple_navigation.trajectory import TrajectorySample
-from rh_experiment import TerminationSubmitter
+from rh_experiment import (
+    EpisodeEvaluationResult,
+    EpisodeMetrics,
+    TerminationSubmitter,
+    TrajectoryPoint,
+)
 from rh_pointnav import PointNavDefinition, PointNavValidationError
 from rh_ros import (
     ConversionError,
@@ -120,6 +125,54 @@ class SimpleNavigationObserver:
             source_frame,
             RclpyTime(),
         )
+
+    def finalize(
+        self,
+        reason: TerminationReason,
+        simulation_time_s: float,
+    ) -> EpisodeEvaluationResult:
+        """Freeze one Episode and return its durable recorder representation."""
+
+        with self._lock:
+            self._evaluation.finish(reason, simulation_time_s)
+            metrics = self._evaluation.metrics
+            samples = tuple(self._evaluation.trajectory.samples)
+        return EpisodeEvaluationResult(
+            metrics=EpisodeMetrics(
+                success=metrics.success,
+                elapsed_time_s=metrics.elapsed_time_s,
+                path_length_m=metrics.path_length_m,
+                final_distance_to_goal_m=metrics.final_distance_to_goal_m,
+                timeout=metrics.timeout,
+                termination_reason=metrics.termination_reason,
+                sample_count=metrics.sample_count,
+            ),
+            trajectory=tuple(
+                TrajectoryPoint(
+                    simulation_time_s=sample.simulation_time_s,
+                    frame_id=sample.position.frame_id,
+                    x=sample.position.x,
+                    y=sample.position.y,
+                    z=sample.position.z,
+                )
+                for sample in samples
+            ),
+        )
+
+    def close(self) -> None:
+        """Destroy Episode-scoped ROS entities so old callbacks cannot leak."""
+
+        for subscription in (
+            self._task_subscription,
+            self._state_subscription,
+            self._agent_state_subscription,
+            self._odom_subscription,
+            self._clock_subscription,
+        ):
+            self._node.destroy_subscription(subscription)
+        unregister = getattr(self._tf_listener, "unregister", None)
+        if callable(unregister):
+            unregister()
 
     def _on_task(self, message: PointNavTask) -> None:
         try:

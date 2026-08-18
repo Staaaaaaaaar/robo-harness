@@ -13,6 +13,7 @@ exception is the deliberately concrete `rh_bringup` composition root.
   idempotency, deadline, sequence-filtering, and model/message adapters.
 
 - [`rh_experiment`](rh_experiment/README.md) owns the Experiment control plane
-  and authoritative Episode lifecycle. Its PR 07 scope is one Episode only.
+  and authoritative serial multi-Episode lifecycle, failure policy, and durable
+  result coordination.
 - [`rh_bringup`](rh_bringup/README.md) is the Experiment-container composition
   root that explicitly selects concrete Task and Evaluator implementations.

@@ -45,6 +45,13 @@ class PointNavTaskPublisher:
         self._publisher.publish(self._message)
         self._publish_count += 1
 
+    def close(self) -> None:
+        """Release the transient-local publisher before the next Episode."""
+
+        if self._publisher is not None:
+            self._node.destroy_publisher(self._publisher)
+            self._publisher = None
+
     def _build_message(self) -> PointNavTask:
         definition = self.definition
         message = PointNavTask()

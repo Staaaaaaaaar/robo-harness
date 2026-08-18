@@ -11,7 +11,9 @@ the same ROS topics, services, TF, and clock used by real implementations.
   test-owned task, Episode state, and simulation-clock publishers to verify
   command gating, Episode isolation, and controlled failure behavior.
 - `rh_experiment_integration_tests` uses protocol-only Env and Agent stubs to
-  verify the authoritative single-Episode lifecycle and failure coordination.
+  verify the authoritative lifecycle, three-Episode process reuse, independent
+  artifacts, stale-callback isolation, continue policy, and infrastructure
+  stop policy.
 - `rh_pointnav_integration_tests` verifies direct immutable task delivery,
   transient-local late join, and the reset/task/READY preparation order.
 - `rh_simple_navigation_integration_tests` verifies fixed-trajectory metrics,

@@ -21,8 +21,9 @@ sample at or after that result. Only an in-radius final position produces a
 success candidate, so merely passing through the goal does not end navigation.
 Agent failure and timeout are also submitted as candidates; the orchestrator
 remains the only authority that commits Episode termination.
-Metrics stay in memory in PR 09. Durable artifacts remain the responsibility of
-the later Recorder PR.
+During safe finalization the observer freezes its metrics and trajectory into
+the generic recorder representation. The orchestrator owns persistence and
+disposes this Episode-scoped observer before advancing to the next Episode.
 
 Use the composed runtime entrypoint:
 

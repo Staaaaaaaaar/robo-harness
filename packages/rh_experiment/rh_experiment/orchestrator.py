@@ -1,8 +1,9 @@
-"""ROS 2 single-Episode Experiment orchestrator."""
+"""ROS 2 serial multi-Episode Experiment orchestrator."""
 
 from __future__ import annotations
 
 import math
+import os
 import queue
 import threading
 import time
@@ -14,7 +15,7 @@ from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import Parameter
-from rh_interfaces.msg import ComponentStatus
+from rh_interfaces.msg import ComponentStatus, EpisodeResult
 from rh_interfaces.msg import EpisodeState as EpisodeStateMessage
 from rh_interfaces.srv import AbortEpisode, ResetAgent, ResetEnv, StartEpisode
 from rosgraph_msgs.msg import Clock as ClockMessage
@@ -27,9 +28,18 @@ from rh_core import (
     TerminationReason,
     load_experiment_config,
 )
-from rh_experiment.controller import ControlDecision, SingleEpisodeController
-from rh_experiment.evaluation import EpisodeEvaluatorFactory
-from rh_experiment.task import EpisodeTaskPublisherFactory
+from rh_experiment.controller import ControlDecision, ExperimentController
+from rh_experiment.evaluation import (
+    EpisodeEvaluationResult,
+    EpisodeEvaluator,
+    EpisodeEvaluatorFactory,
+)
+from rh_experiment.recorder import (
+    EpisodeMetrics,
+    ResultRecorder,
+    RuntimeMetadata,
+)
+from rh_experiment.task import EpisodeTaskPublisher, EpisodeTaskPublisherFactory
 from rh_ros import (
     ServiceCallError,
     ServiceCallTimeoutError,
@@ -57,8 +67,8 @@ class _ControlEvent:
     cancelled: bool = False
 
 
-class SingleEpisodeOrchestratorNode(Node):
-    """Serialize one Episode lifecycle on a dedicated control thread."""
+class ExperimentOrchestratorNode(Node):
+    """Serialize an ordered Experiment lifecycle on one control thread."""
 
     def __init__(
         self,
@@ -68,6 +78,7 @@ class SingleEpisodeOrchestratorNode(Node):
         config: ExperimentConfig | None = None,
         task_publisher_factory: EpisodeTaskPublisherFactory | None = None,
         evaluator_factory: EpisodeEvaluatorFactory | None = None,
+        recorder: ResultRecorder | None = None,
     ) -> None:
         overrides = list(parameter_overrides or [])
         if not any(parameter.name == "use_sim_time" for parameter in overrides):
@@ -87,17 +98,20 @@ class SingleEpisodeOrchestratorNode(Node):
         self.declare_parameter("safe_stop_timeout_s", 2.0)
         self.declare_parameter("control_request_timeout_s", 2.0)
         self.declare_parameter("simulation_clock_stale_timeout_s", 5.0)
+        self.declare_parameter("results_root", "")
+        self.declare_parameter("git_sha", "")
+        self.declare_parameter("isaac_version", "")
 
         runtime_config = config or self._load_config_parameter()
-        if len(runtime_config.experiment.episodes) != 1:
-            raise ValueError("PR7 orchestrator requires exactly one Episode")
-        episode = runtime_config.experiment.episodes[0]
+        self._config = runtime_config
+        self._episode_specs = runtime_config.experiment.episodes
+        episode = self._episode_specs[0]
         configured_id = str(self.get_parameter("experiment_id").value).strip()
         experiment_id = configured_id or runtime_config.experiment.name
         self._episode_spec = episode
-        self._controller = SingleEpisodeController(
+        self._controller = ExperimentController(
             experiment_id=experiment_id,
-            episode_id=episode.episode_id,
+            episode_ids=tuple(item.episode_id for item in self._episode_specs),
             execution_mode=runtime_config.experiment.execution_mode,
         )
         self._state_lock = threading.Lock()
@@ -121,15 +135,18 @@ class SingleEpisodeOrchestratorNode(Node):
             "/roboharness/episode/state",
             latched_control_qos(),
         )
-        self._task_publisher = (
-            task_publisher_factory(self, experiment_id, episode)
-            if task_publisher_factory is not None
-            else None
+        self._result_publisher = self.create_publisher(
+            EpisodeResult,
+            "/roboharness/episode/result",
+            10,
         )
-        self._evaluator = (
-            evaluator_factory(self, experiment_id, episode, self.submit_termination)
-            if evaluator_factory is not None
-            else None
+        self._task_publisher_factory = task_publisher_factory
+        self._evaluator_factory = evaluator_factory
+        self._task_publisher: EpisodeTaskPublisher | None = None
+        self._evaluator: EpisodeEvaluator | None = None
+        self._recorder = recorder or self._recorder_from_parameters(
+            runtime_config,
+            experiment_id,
         )
         self._clock_lock = threading.Lock()
         self._last_clock_nanoseconds: int | None = None
@@ -173,9 +190,14 @@ class SingleEpisodeOrchestratorNode(Node):
         self._events: queue.Queue[_ControlEvent] = queue.Queue()
         self._stop_requested = threading.Event()
         self._run_id = uuid4().hex
-        self._startup_deadline = time.monotonic() + self._startup_timeout_s
+        self._preparation_deadline = time.monotonic() + self._startup_timeout_s
         self._startup_complete = False
         self._finalization_started = False
+        self._stop_after_episode = False
+        self._experiment_finalized = False
+        if self._recorder is not None:
+            self._recorder.start()
+            self._recorder.begin_episode(self._episode_spec)
         self._publish_state("waiting for Env and Agent readiness")
         self._worker = threading.Thread(
             target=self._control_loop,
@@ -214,16 +236,58 @@ class SingleEpisodeOrchestratorNode(Node):
             return ControlDecision(False, "reason must be a TerminationReason")
         event = _ControlEvent(
             kind="terminate",
+            episode_id=self.episode_id,
             termination_reason=reason,
             detail=detail,
         )
         return self._submit_event(event)
+
+    def _submit_episode_termination(
+        self,
+        episode_id: str,
+        reason: TerminationReason,
+        *,
+        detail: str,
+    ) -> ControlDecision:
+        if not isinstance(reason, TerminationReason):
+            return ControlDecision(False, "reason must be a TerminationReason")
+        return self._submit_event(
+            _ControlEvent(
+                kind="terminate",
+                episode_id=episode_id,
+                termination_reason=reason,
+                detail=detail,
+            )
+        )
 
     def _load_config_parameter(self) -> ExperimentConfig:
         config_path = str(self.get_parameter("config_path").value).strip()
         if not config_path:
             raise ValueError("config_path is required")
         return load_experiment_config(config_path)
+
+    def _recorder_from_parameters(
+        self,
+        config: ExperimentConfig,
+        experiment_id: str,
+    ) -> ResultRecorder | None:
+        results_root = str(self.get_parameter("results_root").value).strip()
+        if not results_root:
+            return None
+        git_sha = str(self.get_parameter("git_sha").value).strip() or None
+        isaac_version = (
+            str(self.get_parameter("isaac_version").value).strip() or None
+        )
+        return ResultRecorder(
+            results_root,
+            experiment_id,
+            config,
+            runtime=RuntimeMetadata(
+                git_sha=git_sha,
+                ros_distro=os.environ.get("ROS_DISTRO") or None,
+                isaac_version=isaac_version,
+            ),
+        )
 
     def _positive_parameter(self, name: str) -> float:
         value = self.get_parameter(name).value
@@ -308,8 +372,8 @@ class SingleEpisodeOrchestratorNode(Node):
     def _control_loop(self) -> None:
         while not self._stop_requested.is_set():
             try:
-                if not self._startup_complete and self._episode_state() is EpisodeState.PREPARING:
-                    self._startup_tick()
+                if self._episode_state() is EpisodeState.PREPARING:
+                    self._preparation_tick()
                 self._runtime_health_tick()
                 self._finalization_tick()
                 try:
@@ -324,7 +388,7 @@ class SingleEpisodeOrchestratorNode(Node):
                     f"orchestrator control failure: {error}",
                 )
 
-    def _startup_tick(self) -> None:
+    def _preparation_tick(self) -> None:
         env_message = self._env_status.tracker.latest(self._env_component_id)
         agent_message = self._agent_status.tracker.latest(self._agent_component_id)
         if env_message is not None and env_message.state == ComponentStatus.ERROR:
@@ -342,7 +406,7 @@ class SingleEpisodeOrchestratorNode(Node):
         env_ready = self._env_status.tracker.is_ready(self._env_component_id)
         agent_ready = self._agent_status.tracker.is_ready(self._agent_component_id)
         if not (env_ready and agent_ready):
-            if time.monotonic() >= self._startup_deadline:
+            if time.monotonic() >= self._preparation_deadline:
                 reason = (
                     TerminationReason.ENV_ERROR
                     if not env_ready
@@ -356,8 +420,11 @@ class SingleEpisodeOrchestratorNode(Node):
             return
 
         with self._state_lock:
-            self._controller.mark_components_ready()
-        self._startup_complete = True
+            if not self._startup_complete:
+                self._controller.mark_components_ready()
+                self._startup_complete = True
+        if not self._create_episode_resources():
+            return
         if not self._reset_environment():
             return
         if not self._reset_agent():
@@ -372,7 +439,7 @@ class SingleEpisodeOrchestratorNode(Node):
 
     def _reset_environment(self) -> bool:
         request = ResetEnv.Request()
-        request.request_id = f"{self._run_id}:env-reset"
+        request.request_id = f"{self._run_id}:{self.episode_id}:env-reset"
         request.experiment_id = self.experiment_id
         request.episode_id = self.episode_id
         request.initial_pose = pose_to_message(self._episode_spec.initial_pose)
@@ -415,9 +482,49 @@ class SingleEpisodeOrchestratorNode(Node):
             return False
         return True
 
+    def _create_episode_resources(self) -> bool:
+        if self._task_publisher is not None or self._evaluator is not None:
+            return True
+        try:
+            if self._task_publisher_factory is not None:
+                self._task_publisher = self._task_publisher_factory(
+                    self,
+                    self.experiment_id,
+                    self._episode_spec,
+                )
+            if self._evaluator_factory is not None:
+                active_episode_id = self.episode_id
+
+                def submit_bound(
+                    reason: TerminationReason,
+                    *,
+                    detail: str,
+                ) -> ControlDecision:
+                    return self._submit_episode_termination(
+                        active_episode_id,
+                        reason,
+                        detail=detail,
+                    )
+
+                self._evaluator = self._evaluator_factory(
+                    self,
+                    self.experiment_id,
+                    self._episode_spec,
+                    submit_bound,
+                )
+        except Exception as error:
+            self._close_episode_resources()
+            self._commit_episode_termination(
+                TerminationReason.INVALID_TASK,
+                f"Episode implementation rejected the task: {error}",
+                stop_experiment=False,
+            )
+            return False
+        return True
+
     def _reset_agent(self) -> bool:
         request = ResetAgent.Request()
-        request.request_id = f"{self._run_id}:agent-reset"
+        request.request_id = f"{self._run_id}:{self.episode_id}:agent-reset"
         request.experiment_id = self.experiment_id
         request.episode_id = self.episode_id
         try:
@@ -529,6 +636,11 @@ class SingleEpisodeOrchestratorNode(Node):
                 self._publish_state(decision.detail)
             return decision
         if event.kind == "terminate":
+            if event.episode_id != self.episode_id:
+                return ControlDecision(
+                    False,
+                    "termination candidate does not match the active Episode",
+                )
             with self._state_lock:
                 decision = self._controller.request_termination(
                     event.termination_reason,
@@ -561,8 +673,19 @@ class SingleEpisodeOrchestratorNode(Node):
         reason: TerminationReason,
         detail: str,
     ) -> None:
+        self._commit_episode_termination(reason, detail, stop_experiment=True)
+
+    def _commit_episode_termination(
+        self,
+        reason: TerminationReason,
+        detail: str,
+        *,
+        stop_experiment: bool,
+    ) -> None:
+        self._stop_after_episode = self._stop_after_episode or stop_experiment
         with self._state_lock:
-            self._controller.fail_experiment()
+            if stop_experiment:
+                self._controller.fail_experiment()
             decision = self._controller.request_termination(reason, detail=detail)
         if decision.accepted:
             self._publish_state(detail)
@@ -579,9 +702,154 @@ class SingleEpisodeOrchestratorNode(Node):
             if acknowledged
             else "safe-stop state delivery deadline expired"
         )
+        reason = self._termination_reason()
+        evaluation = self._finalize_evaluation(reason)
+        result_uri = self._persist_episode(evaluation, reason, detail)
+
+        last_episode = not self._controller.has_next_episode
+        if self._recorder is not None and (self._stop_after_episode or last_episode):
+            self._finish_recorder(complete=last_episode and not self._stop_after_episode)
         with self._state_lock:
-            self._controller.finish_termination()
-        self._publish_state(detail)
+            self._controller.finish_termination(
+                stop_experiment=self._stop_after_episode,
+            )
+        self._publish_state(detail, record_event=False)
+        self._publish_result(evaluation.metrics, result_uri)
+        self._close_episode_resources()
+
+        if not self._stop_after_episode and self._controller.has_next_episode:
+            self._advance_episode()
+        else:
+            self._experiment_finalized = True
+
+    def _finalize_evaluation(
+        self,
+        reason: TerminationReason,
+    ) -> EpisodeEvaluationResult:
+        simulation_time_s = self._simulation_time_s()
+        if self._evaluator is not None:
+            try:
+                result = self._evaluator.finalize(reason, simulation_time_s)
+                if result.metrics.termination_reason is not reason:
+                    raise ValueError(
+                        "evaluator metrics disagree with committed termination reason"
+                    )
+                return result
+            except Exception as error:
+                self.get_logger().error(f"evaluator finalization failed: {error}")
+                self._stop_after_episode = True
+                with self._state_lock:
+                    self._controller.fail_experiment()
+        return EpisodeEvaluationResult(
+            metrics=EpisodeMetrics(
+                success=reason is TerminationReason.SUCCESS,
+                elapsed_time_s=0.0,
+                path_length_m=0.0,
+                final_distance_to_goal_m=None,
+                timeout=reason is TerminationReason.TIMEOUT,
+                termination_reason=reason,
+                sample_count=0,
+            ),
+            trajectory=(),
+        )
+
+    def _persist_episode(
+        self,
+        evaluation: EpisodeEvaluationResult,
+        reason: TerminationReason,
+        detail: str,
+    ) -> str:
+        if self._recorder is None:
+            return ""
+        try:
+            self._recorder.record_event(
+                self.episode_id,
+                "episode_finished",
+                simulation_time_s=self._simulation_time_s(),
+                detail=detail,
+                payload={"termination_reason": reason.name},
+            )
+            return self._recorder.complete_episode(
+                self.episode_id,
+                evaluation.metrics,
+                evaluation.trajectory,
+            )
+        except Exception as error:
+            self.get_logger().error(f"result persistence failed: {error}")
+            self._stop_after_episode = True
+            with self._state_lock:
+                self._controller.fail_experiment()
+            return ""
+
+    def _finish_recorder(self, *, complete: bool) -> None:
+        assert self._recorder is not None
+        try:
+            self._recorder.finish(complete=complete)
+        except Exception as error:
+            self.get_logger().error(f"Experiment result commit failed: {error}")
+            self._stop_after_episode = True
+            with self._state_lock:
+                self._controller.fail_experiment()
+            if complete:
+                try:
+                    self._recorder.finish(complete=False)
+                except Exception as fallback_error:
+                    self.get_logger().error(
+                        f"incomplete result marker also failed: {fallback_error}"
+                    )
+
+    def _publish_result(self, metrics: EpisodeMetrics, result_uri: str) -> None:
+        message = EpisodeResult()
+        message.experiment_id = self.experiment_id
+        message.episode_id = self.episode_id
+        message.termination_reason = int(metrics.termination_reason)
+        message.success = metrics.success
+        message.elapsed_time_s = metrics.elapsed_time_s
+        message.path_length_m = metrics.path_length_m
+        message.final_distance_to_goal_m = (
+            metrics.final_distance_to_goal_m
+            if metrics.final_distance_to_goal_m is not None
+            else math.nan
+        )
+        message.result_uri = result_uri
+        self._result_publisher.publish(message)
+
+    def _advance_episode(self) -> None:
+        with self._state_lock:
+            self._controller.advance_episode()
+            self._episode_spec = self._episode_specs[self._controller.episode_index]
+        self._task_publisher = None
+        self._evaluator = None
+        self._finalization_started = False
+        self._stop_after_episode = False
+        self._preparation_deadline = time.monotonic() + self._startup_timeout_s
+        with self._clock_lock:
+            self._running_wall_time = None
+        if self._recorder is not None:
+            self._recorder.begin_episode(self._episode_spec)
+        self._publish_state("waiting for Env and Agent readiness")
+
+    def _close_episode_resources(self) -> None:
+        for resource in (self._evaluator, self._task_publisher):
+            if resource is None:
+                continue
+            try:
+                resource.close()
+            except Exception as error:
+                self.get_logger().warning(
+                    f"failed to close Episode resource: {error}"
+                )
+        self._evaluator = None
+        self._task_publisher = None
+
+    def _simulation_time_s(self) -> float:
+        with self._clock_lock:
+            nanoseconds = self._last_clock_nanoseconds
+        return 0.0 if nanoseconds is None else nanoseconds / 1_000_000_000.0
+
+    def _termination_reason(self) -> TerminationReason:
+        with self._state_lock:
+            return self._controller.episode.termination_reason
 
     def _safe_stop_handshake(self) -> bool:
         deadline = time.monotonic() + self._safe_stop_timeout_s
@@ -589,7 +857,10 @@ class SingleEpisodeOrchestratorNode(Node):
             remaining = deadline - time.monotonic()
             if remaining <= 0.0:
                 return False
-            self._publish_state("waiting for safe-stop state delivery")
+            self._publish_state(
+                "waiting for safe-stop state delivery",
+                record_event=False,
+            )
             if self._state_publisher.get_subscription_count() >= 2:
                 timeout = Duration(seconds=min(0.05, remaining))
                 if self._state_publisher.wait_for_all_acked(timeout):
@@ -597,7 +868,7 @@ class SingleEpisodeOrchestratorNode(Node):
             self._stop_requested.wait(min(0.01, remaining))
         return False
 
-    def _publish_state(self, detail: str) -> None:
+    def _publish_state(self, detail: str, *, record_event: bool = True) -> None:
         with self._state_lock:
             lifecycle = self._controller.episode
             message = episode_state_to_message(
@@ -608,6 +879,18 @@ class SingleEpisodeOrchestratorNode(Node):
             )
             self._state_history.append(message)
         self._state_publisher.publish(message)
+        if self._recorder is not None and record_event:
+            self._recorder.record_event(
+                self.episode_id,
+                "episode_state",
+                simulation_time_s=self._simulation_time_s(),
+                detail=detail,
+                payload={
+                    "state": int(message.state),
+                    "termination_reason": int(message.termination_reason),
+                    "sequence": int(message.sequence),
+                },
+            )
 
     def _episode_state(self) -> EpisodeState:
         with self._state_lock:
@@ -619,11 +902,29 @@ class SingleEpisodeOrchestratorNode(Node):
         self._stop_requested.set()
         if hasattr(self, "_worker") and self._worker.is_alive():
             self._worker.join(timeout=self._control_request_timeout_s)
+        if hasattr(self, "_evaluator"):
+            self._close_episode_resources()
+        if (
+            hasattr(self, "_recorder")
+            and self._recorder is not None
+            and not self._experiment_finalized
+        ):
+            try:
+                self._recorder.finish(complete=False)
+            except Exception as error:
+                self.get_logger().warning(
+                    f"failed to finalize interrupted result: {error}"
+                )
+            self._experiment_finalized = True
 
     def destroy_node(self) -> bool:
         if hasattr(self, "_stop_requested"):
             self.stop()
         return super().destroy_node()
+
+
+# Preserve the PR7 import while widening its implementation to multi-Episode.
+SingleEpisodeOrchestratorNode = ExperimentOrchestratorNode
 
 
 def main(
@@ -633,7 +934,7 @@ def main(
     evaluator_factory: EpisodeEvaluatorFactory | None = None,
 ) -> None:
     rclpy.init(args=args)
-    node = SingleEpisodeOrchestratorNode(
+    node = ExperimentOrchestratorNode(
         task_publisher_factory=task_publisher_factory,
         evaluator_factory=evaluator_factory,
     )

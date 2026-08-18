@@ -1,4 +1,4 @@
-"""ROS-independent single-Episode control decisions."""
+"""ROS-independent Experiment and Episode control decisions."""
 
 from __future__ import annotations
 
@@ -20,24 +20,45 @@ class ControlDecision:
     detail: str
 
 
-class SingleEpisodeController:
-    """Own legal Experiment and Episode transitions without ROS side effects."""
+class ExperimentController:
+    """Own one ordered multi-Episode lifecycle without ROS side effects."""
 
     def __init__(
         self,
         *,
         experiment_id: str,
-        episode_id: str,
+        episode_ids: tuple[str, ...],
         execution_mode: ExecutionMode,
     ) -> None:
         if not experiment_id.strip():
             raise ValueError("experiment_id must not be empty")
+        if not episode_ids:
+            raise ValueError("episode_ids must not be empty")
+        if any(not isinstance(value, str) or not value.strip() for value in episode_ids):
+            raise ValueError("episode_ids must contain non-empty strings")
+        if len(set(episode_ids)) != len(episode_ids):
+            raise ValueError("episode_ids must be unique")
         if not isinstance(execution_mode, ExecutionMode):
             raise TypeError("execution_mode must be an ExecutionMode")
         self.experiment_id = experiment_id
         self.execution_mode = execution_mode
+        self._episode_ids = episode_ids
+        self._episode_index = 0
+        self._completed_episodes: list[EpisodeLifecycle] = []
         self.experiment = ExperimentLifecycle().transition(ExperimentState.STARTING)
-        self.episode = EpisodeLifecycle(episode_id=episode_id)
+        self.episode = EpisodeLifecycle(episode_id=episode_ids[0])
+
+    @property
+    def episode_index(self) -> int:
+        return self._episode_index
+
+    @property
+    def has_next_episode(self) -> bool:
+        return self._episode_index + 1 < len(self._episode_ids)
+
+    @property
+    def completed_episodes(self) -> tuple[EpisodeLifecycle, ...]:
+        return tuple(self._completed_episodes)
 
     def mark_components_ready(self) -> None:
         """Finish Experiment startup before reset/task preparation begins."""
@@ -98,13 +119,31 @@ class SingleEpisodeController:
             detail=f"abort accepted: {reason.strip()}",
         )
 
-    def finish_termination(self) -> None:
+    def finish_termination(self, *, stop_experiment: bool = False) -> None:
         self.episode = self.episode.transition(EpisodeState.FINISHED)
-        if self.experiment.state is ExperimentState.RUNNING:
+        self._completed_episodes.append(self.episode)
+        if stop_experiment:
+            self.fail_experiment()
+        elif self.experiment.state is ExperimentState.RUNNING and not self.has_next_episode:
             self.experiment = self.experiment.transition(ExperimentState.FINALIZING)
             self.experiment = self.experiment.transition(ExperimentState.FINISHED)
         elif self.experiment.state is ExperimentState.STARTING:
             self.experiment = self.experiment.transition(ExperimentState.FAILED)
+
+    def advance_episode(self) -> EpisodeLifecycle:
+        """Open the next Episode after the previous one reached FINISHED."""
+
+        if self.episode.state is not EpisodeState.FINISHED:
+            raise RuntimeError("the active Episode must be FINISHED before advancing")
+        if not self.has_next_episode:
+            raise RuntimeError("there is no next Episode")
+        if self.experiment.state is not ExperimentState.RUNNING:
+            raise RuntimeError("the Experiment is not running")
+        self._episode_index += 1
+        self.episode = EpisodeLifecycle(
+            episode_id=self._episode_ids[self._episode_index]
+        )
+        return self.episode
 
     def fail_experiment(self) -> None:
         if self.experiment.state in {ExperimentState.STARTING, ExperimentState.RUNNING}:
@@ -116,3 +155,20 @@ class SingleEpisodeController:
         if experiment_id != self.experiment_id or episode_id != self.episode.episode_id:
             return "request identity does not match the active Episode"
         return None
+
+
+class SingleEpisodeController(ExperimentController):
+    """Compatibility wrapper for callers that intentionally own one Episode."""
+
+    def __init__(
+        self,
+        *,
+        experiment_id: str,
+        episode_id: str,
+        execution_mode: ExecutionMode,
+    ) -> None:
+        super().__init__(
+            experiment_id=experiment_id,
+            episode_ids=(episode_id,),
+            execution_mode=execution_mode,
+        )

@@ -3,7 +3,7 @@
 <package format="3">
   <name>rh_experiment</name>
   <version>0.0.0</version>
-  <description>Single-Episode Experiment orchestrator for RoboHarness.</description>
+  <description>Serial multi-Episode Experiment orchestrator for RoboHarness.</description>
   <maintainer email="2300012435@stu.pku.edu.cn">Staaaaaaaaar</maintainer>
   <!-- Project licensing and release versioning are finalized by roadmap PR 18. -->
   <license>NOASSERTION</license>

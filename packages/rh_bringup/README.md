@@ -17,8 +17,14 @@ Run it with:
 
 ```bash
 ros2 run rh_bringup experiment --profile pointnav_simple --ros-args \
-  -p config_path:=/workspace/roboharness/configs/experiments/mvp.yaml
+  -p config_path:=/workspace/roboharness/configs/experiments/mvp.yaml \
+  -p experiment_id:=go2-keyboard-run-001 \
+  -p results_root:=/workspace/roboharness/results
 ```
+
+The orchestrator executes every configured Episode serially. Choose a new
+`experiment_id` for each recorded run because result directories are immutable
+and are never overwritten.
 
 New supported combinations are added to the small `ASSEMBLIES` registry. Task
 and Evaluator packages expose implementations only and do not own application

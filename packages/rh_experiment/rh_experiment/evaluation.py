@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Protocol
 
 from rclpy.node import Node
 
 from rh_core import EpisodeSpec, TerminationReason
 from rh_experiment.controller import ControlDecision
+from rh_experiment.recorder import EpisodeMetrics, TrajectoryPoint
 
 
 class TerminationSubmitter(Protocol):
@@ -22,8 +24,24 @@ class TerminationSubmitter(Protocol):
     ) -> ControlDecision: ...
 
 
+@dataclass(frozen=True, slots=True)
+class EpisodeEvaluationResult:
+    """Recorder-ready immutable snapshot produced during safe finalization."""
+
+    metrics: EpisodeMetrics
+    trajectory: tuple[TrajectoryPoint, ...]
+
+
 class EpisodeEvaluator(Protocol):
-    """Marker protocol for an evaluator owned by an Experiment process."""
+    """Per-Episode evaluator owned and disposed by the orchestrator."""
+
+    def finalize(
+        self,
+        reason: TerminationReason,
+        simulation_time_s: float,
+    ) -> EpisodeEvaluationResult: ...
+
+    def close(self) -> None: ...
 
 
 EpisodeEvaluatorFactory = Callable[
