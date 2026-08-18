@@ -1,7 +1,9 @@
 SHELL := /bin/bash
 
-COMPOSE := docker compose --env-file deployment/env/versions.env \
+DEV_COMPOSE := docker compose --env-file deployment/env/versions.env \
 	-f deployment/compose/compose.dev.yaml
+MOCK_COMPOSE := docker compose --env-file deployment/env/versions.env \
+	-f deployment/compose/compose.mock.yaml
 BASE_PATHS := packages agents tasks evaluators tests
 COLCON_ENV := COLCON_DEFAULTS_FILE=$(CURDIR)/colcon.defaults.yaml
 
@@ -10,6 +12,7 @@ export HOST_UID := $(shell id -u $(CURRENT_USER))
 export HOST_GID := $(shell id -g $(CURRENT_USER))
 
 .PHONY: help dev-image dev-shell dev-list dev-build dev-test dev-lint dev-check \
+	mock-image mock-e2e \
 	list-local build-local test-local lint-local check-local
 
 help:
@@ -21,27 +24,35 @@ help:
 	@echo "  make dev-test   Run ROS package tests"
 	@echo "  make dev-lint   Run repository validation and lint"
 	@echo "  make dev-check  Run the complete PR/CI check"
+	@echo "  make mock-image Build the CPU mock runtime image"
+	@echo "  make mock-e2e   Run and validate the three-container mock stack"
 
 dev-image:
-	$(COMPOSE) build dev
+	$(DEV_COMPOSE) build dev
 
 dev-shell:
-	$(COMPOSE) run --rm dev bash
+	$(DEV_COMPOSE) run --rm dev bash
 
 dev-list:
-	$(COMPOSE) run --rm dev make list-local
+	$(DEV_COMPOSE) run --rm dev make list-local
 
 dev-build:
-	$(COMPOSE) run --rm dev make build-local
+	$(DEV_COMPOSE) run --rm dev make build-local
 
 dev-test:
-	$(COMPOSE) run --rm dev make test-local
+	$(DEV_COMPOSE) run --rm dev make test-local
 
 dev-lint:
-	$(COMPOSE) run --rm dev make lint-local
+	$(DEV_COMPOSE) run --rm dev make lint-local
 
 dev-check:
-	$(COMPOSE) run --rm dev make check-local
+	$(DEV_COMPOSE) run --rm dev make check-local
+
+mock-image:
+	$(MOCK_COMPOSE) build experiment
+
+mock-e2e:
+	tools/e2e/run_mock_compose.sh
 
 # The *-local targets are internal entry points used inside the development image.
 list-local:
