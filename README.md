@@ -11,7 +11,7 @@ RoboHarness 是面向机器人导航任务的快速实验、自动运行与统�
 严格限定为：
 
 - Simulator：NVIDIA Isaac Sim
-- Robot：Unitree Go2
+- Robot：ANYmal C
 - Agent：ROS 2 Keyboard Agent
 - Task：PointNav
 - Evaluation：Simple Navigation Evaluation
@@ -126,4 +126,4 @@ MVP 不实现 Gazebo、Nav2、Reactive/RL/VLA/VLN Agent、其他机器人、复�
 
 ## License
 
-License 尚未确定。在明确许可证之前，请勿假定仓库内容可被再分发；引入 Go2/Isaac 资源时也必须单独核对其许可证与再分发条件。
+License 尚未确定。在明确许可证之前，请勿假定仓库内容可被再分发；引入 ANYmal C/Isaac 资源时也必须单独核对其许可证与再分发条件。

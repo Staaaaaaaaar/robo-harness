@@ -67,4 +67,8 @@ container snapshots, ROS graph snapshots, and Compose logs are retained under
 `.build/mock-e2e/`; the stack is always removed on exit.
 
 This CPU image is a reproducible protocol and orchestration reference, not an
-Isaac production image. Isaac/GPU versions and images remain the scope of PR 13.
+Isaac production image. Isaac Sim 4.5.0, Ubuntu 22.04, and ROS 2 Humble are the
+selected runtime baseline; the exact GPU image digest and host-driver validation
+remain the scope of PR 13. The MVP uses the ANYmal C locomotion policy bundled
+with Isaac Sim, so Isaac Lab is not installed in the runtime image. Policy
+training or export tooling will be selected and pinned separately if required.

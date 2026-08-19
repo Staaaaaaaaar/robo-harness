@@ -10,7 +10,7 @@ def valid_document() -> dict[str, Any]:
     return {
         "schema_version": 1,
         "experiment": {
-            "name": "go2_keyboard_pointnav",
+            "name": "anymal_c_keyboard_pointnav",
             "execution_mode": "manual",
             "episodes": [
                 {

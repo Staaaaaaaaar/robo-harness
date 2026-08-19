@@ -20,7 +20,7 @@ def test_canonical_mvp_config_loads_to_immutable_models() -> None:
     config = load_experiment_config(repository_root / "configs/experiments/mvp.yaml")
 
     assert config.schema_version == 1
-    assert config.experiment.name == "go2_keyboard_pointnav"
+    assert config.experiment.name == "anymal_c_keyboard_pointnav"
     assert config.experiment.execution_mode is ExecutionMode.MANUAL
     assert isinstance(config.experiment.episodes, tuple)
     assert config.experiment.episodes[0].initial_pose.frame_id == "map"
