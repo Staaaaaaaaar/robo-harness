@@ -1,0 +1,62 @@
+name: roboharness-isaac
+
+x-isaac-environment: &isaac-environment
+  ACCEPT_EULA: ${ACCEPT_EULA:-N}
+  PRIVACY_CONSENT: ${PRIVACY_CONSENT:-N}
+  ROS_DISTRO: ${RH_ROS_DISTRO}
+  ROS_DOMAIN_ID: ${RH_ISAAC_ROS_DOMAIN_ID:-42}
+  ROS_LOCALHOST_ONLY: "0"
+  RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+
+services:
+  env:
+    image: ${RH_ISAAC_ENV_IMAGE}
+    build:
+      context: ../..
+      dockerfile: deployment/docker/env/Dockerfile
+      args:
+        ISAAC_SIM_IMAGE: ${RH_ISAAC_SIM_IMAGE}
+        ROS_BASE_IMAGE: ${RH_ROS_BASE_IMAGE}
+    init: true
+    restart: "no"
+    stop_grace_period: 30s
+    network_mode: host
+    ipc: host
+    gpus: all
+    shm_size: 2gb
+    environment:
+      <<: *isaac-environment
+      DISPLAY: ${DISPLAY:-}
+    command: ["${RH_ISAAC_MODE:-headless}"]
+    volumes:
+      - isaac-kit-cache:/isaac-sim/kit/cache
+      - isaac-ov-cache:/root/.cache/ov
+      - isaac-pip-cache:/root/.cache/pip
+      - isaac-gl-cache:/root/.cache/nvidia/GLCache
+      - isaac-compute-cache:/root/.nv/ComputeCache
+      - isaac-data:/root/.local/share/ov/data
+      - isaac-logs:/root/.nvidia-omniverse/logs
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+
+  bridge-observer:
+    profiles: ["validation"]
+    image: ${RH_ROS_BASE_IMAGE}
+    init: true
+    restart: "no"
+    network_mode: host
+    ipc: host
+    environment:
+      ROS_DISTRO: ${RH_ROS_DISTRO}
+      ROS_DOMAIN_ID: ${RH_ISAAC_ROS_DOMAIN_ID:-42}
+      ROS_LOCALHOST_ONLY: "0"
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+    command: ["sleep", "infinity"]
+
+volumes:
+  isaac-kit-cache:
+  isaac-ov-cache:
+  isaac-pip-cache:
+  isaac-gl-cache:
+  isaac-compute-cache:
+  isaac-data:
+  isaac-logs:

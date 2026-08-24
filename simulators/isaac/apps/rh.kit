@@ -1,0 +1,22 @@
+[package]
+title = "RoboHarness Isaac Backend"
+description = "Minimal Isaac Sim 4.5 application for the RoboHarness environment backend"
+version = "0.1.0"
+keywords = ["app", "isaac", "robotics", "ros2"]
+
+[dependencies]
+"omni.kit.loop-isaac" = {}
+"isaacsim.ros2.bridge" = {}
+"rh.isaac" = {}
+
+[settings]
+app.name = "RoboHarness Isaac Backend"
+app.version = "0.1.0"
+app.fastShutdown = true
+app.file.ignoreUnsavedOnExit = true
+app.runLoopsGlobal.syncToPresent = false
+app.runLoops.main.rateLimitEnabled = true
+app.runLoops.main.rateLimitFrequency = 60
+app.runLoops.main.rateLimitUseBusyLoop = false
+persistent.simulation.minFrameRate = 60
+exts."isaacsim.ros2.bridge".ros_distro = "humble"

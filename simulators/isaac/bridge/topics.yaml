@@ -1,0 +1,14 @@
+schema_version: 1
+backend: isaac_sim_4_5
+
+native_bridge:
+  extension: isaacsim.ros2.bridge
+  clock:
+    graph_path: /RoboHarness/ROS2Clock
+    topic: /clock
+    type: rosgraph_msgs/msg/Clock
+    source: simulation_time
+
+# Sensor, TF, odometry, and command graphs are intentionally introduced with
+# the ANYmal C binding in PR 14. They must use native Bridge nodes rather than
+# project-owned ROS transport copies.
