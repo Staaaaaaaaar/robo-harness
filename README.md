@@ -79,6 +79,26 @@ make dev-lint
 make mock-e2e
 ```
 
+PR13 的 Isaac backend / 原生 ROS 2 Bridge 骨架使用：
+
+```bash
+cp deployment/env/.env.example deployment/env/.env
+# 阅读 NVIDIA EULA 后，将 ACCEPT_EULA 改为 Y。
+make isaac-config
+make isaac-smoke
+```
+
+本地 Linux X11 图形会话可直接运行：
+
+```bash
+make isaac-gui
+```
+
+首次配置 GPU 开发机请按
+[PR13 Isaac 开发环境与调整记录](docs/guides/isaac-pr13-development-environment.md)
+区分宿主机、运行基线和本地 consent 配置，再执行
+[NVIDIA Container Toolkit 安装指南](docs/guides/nvidia-container-toolkit-host-setup.md)。
+
 开发容器只是临时工具环境，不属于 RoboHarness 的运行服务。详细说明见
 [部署与开发环境](deployment/README.md)和
 [开发平台 ADR](docs/adr/0001-development-platform.md)。
@@ -89,13 +109,9 @@ make mock-e2e
 三个独立容器，等待 ROS 图和三个 Episode 结果完成，校验产物后自动清理服务。
 结果和容器日志保存在 `.build/mock-e2e/`。
 
-面向 Isaac Sim 的完整 MVP 运行方式仍将在后续 PR 中补齐：
-
-```bash
-cp deployment/env/.env.example deployment/env/.env
-docker compose --env-file deployment/env/.env \
-  -f deployment/compose/compose.yaml up --build
-```
+当前 Isaac profile 只验证 pinned image、Kit application、原生 Bridge、`/clock`
+与跨容器 DDS discovery；它不包含 ANYmal C、运控、完整 Env reset 或 MVP E2E。
+完整运行方式仍将在 PR14–PR17 中补齐。
 
 运行链：
 
