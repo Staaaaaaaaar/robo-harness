@@ -18,7 +18,7 @@ Run it with:
 ```bash
 ros2 run rh_bringup experiment --profile pointnav_simple --ros-args \
   -p config_path:=/workspace/roboharness/configs/experiments/mvp.yaml \
-  -p experiment_id:=go2-keyboard-run-001 \
+  -p experiment_id:=anymal-c-keyboard-run-001 \
   -p results_root:=/workspace/roboharness/results
 ```
 

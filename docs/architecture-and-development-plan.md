@@ -33,10 +33,12 @@ RoboHarness 是一套机器人导航实验平台，由以下能力组成：
 唯一承诺的纵向组合是：
 
 ```text
-Isaac Sim × Unitree Go2 × ROS 2 Keyboard Agent × PointNav × Simple Eval
+Isaac Sim 4.5.0 × ANYmal C × ROS 2 Keyboard Agent × PointNav × Simple Eval
 ```
 
 成功标准不是“支持很多实现”，而是五个替换维度已建立清晰边界，且上述组合能稳定连续运行多个 Episode。
+
+MVP 只运行 Isaac Sim 4.5.0 自带的 ANYmal C locomotion policy，不训练或重新导出策略，因此 Isaac Lab 不是开发或运行依赖。若后续确认需要 policy training/export，再通过独立 ADR 选择并固定 Isaac Lab 版本，不将其预先加入 Env 镜像。
 
 ### 1.4 未来扩展维度
 
@@ -61,7 +63,7 @@ Simulator、Robot、Agent、Task、Evaluation 均通过 ROS contract、配置约
                          ┌─────────────────┐   telemetry/results
                          │       env       │───────────────►
                          │ Isaac backend   │
-                         │ + Go2 binding   │
+                         │ + ANYmal C bind │
                          └───────┬─────────┘
                                  │ observations
                                  v
@@ -102,8 +104,8 @@ Simulator、Robot、Agent、Task、Evaluation 均通过 ROS contract、配置约
 | Evaluator | 订阅 ground truth/episode/task，维护轨迹并计算 metrics、提出终止候选 | 发布 `cmd_vel`、改变 world、决定调度策略 |
 | Result Recorder | 原子写入 config、metadata、episode spec、events、trajectory、metrics 和 summary | 计算控制或拥有生命周期状态 |
 | Simulator Backend | Isaac app/extension、timeline、stage、physics、world、原生 ROS 2 Bridge 配置与 backend readiness | Agent、Task/Eval、跨 simulator 的机器人声明 |
-| Backend-local Robot Definition | 位于 `simulators/<sim>/robots/<robot>` 的 Go2 identity、frames、limits 与 asset manifest | 跨 backend 的全局 robot registry；MVP 不单独发布 robot package |
-| Simulator × Robot Binding | Go2 asset spawn、articulation、传感器、`cmd_vel` 到 locomotion controller、joint/velocity reset、Isaac-specific physics 与安全门控 | Core protocol、Keyboard policy、跨 simulator 通用控制实现 |
+| Backend-local Robot Definition | 位于 `simulators/<sim>/robots/<robot>` 的 ANYmal C identity、frames、limits 与 asset manifest | 跨 backend 的全局 robot registry；MVP 不单独发布 robot package |
+| Simulator × Robot Binding | ANYmal C asset spawn、articulation、传感器、`cmd_vel` 到官方 locomotion policy、joint/velocity reset、Isaac-specific physics 与安全门控 | Core protocol、Keyboard policy、跨 simulator 通用控制实现 |
 
 安全速度门控由两端共同保证：Agent 在非 `RUNNING` 时停止发布并立即发零速度；Env 无条件拒绝/归零非 `RUNNING` 命令。Env 是最后安全边界，不能只信任 Agent。
 
@@ -175,7 +177,7 @@ load config -> wait env/agent READY
 
 ### 6.1 Env Contract
 
-必须提供 component status、幂等 `reset_episode`、`cmd_vel` 输入、标准 observation、TF、simulation clock 与 Episode state awareness。READY 表示 Isaac、world、Go2 binding、physics、原生 ROS 2 Bridge 和必需接口全部可用。reset 成功表示 world、robot root/joint pose、velocity、locomotion controller 与 physics episode state 已恢复且输出为零。Go2 的底层运控属于 Env backend，不属于 Agent 或独立 robot driver。
+必须提供 component status、幂等 `reset_episode`、`cmd_vel` 输入、标准 observation、TF、simulation clock 与 Episode state awareness。READY 表示 Isaac、world、ANYmal C binding、physics、原生 ROS 2 Bridge 和必需接口全部可用。reset 成功表示 world、robot root/joint pose、velocity、locomotion policy/controller 与 physics episode state 已恢复且输出为零。ANYmal C 的底层仿真运控属于 Env backend，不属于 Agent 或独立 robot driver。
 
 ### 6.2 Agent Contract
 
@@ -197,7 +199,7 @@ Core contract 由 ROS interfaces、配置 schema 和行为测试共同定义；P
 
 平台语义统一在 `/roboharness` 下；标准机器人接口使用 `/robot` namespace，以便未来多机器人时显式 remap：`/robot/cmd_vel`、`/robot/odom`、`/robot/imu`、`/robot/scan`、`/robot/camera/*`。`/tf`、`/tf_static` 和 `/clock` 保留 ROS 惯例。
 
-自定义 `msg/srv` 全部置于独立 `rh_interfaces` package。接口定义不得依赖 Isaac、Go2 或 Python 实现包。
+自定义 `msg/srv` 全部置于独立 `rh_interfaces` package。接口定义不得依赖 Isaac、ANYmal C 或 Python 实现包。
 
 ### 7.2 平台协议
 
@@ -279,7 +281,7 @@ MVP YAML：
 ```yaml
 schema_version: 1
 experiment:
-  name: go2_keyboard_pointnav
+  name: anymal_c_keyboard_pointnav
   execution_mode: manual
   episodes:
     - episode_id: "0000"
@@ -362,7 +364,7 @@ roboharness/
 │  └─ rh_bringup/                       # concrete Experiment composition root
 │
 ├─ simulators/                          # Simulator backends；Robot 位于内部
-│  └─ isaac_sim/
+│  └─ isaac/
 │     ├─ apps/
 │     │  └─ rh.kit                      # 启用原生 Bridge 与项目 extension
 │     ├─ extensions/
@@ -373,7 +375,7 @@ roboharness/
 │     │  ├─ action_graphs/              # 原生 ROS 2 Bridge graph 定义
 │     │  └─ topics.yaml                 # topic/frame/QoS mapping
 │     ├─ robots/
-│     │  └─ go2/                        # Isaac Sim × Go2 完整 binding
+│     │  └─ anymal_c/                   # Isaac Sim × ANYmal C 完整 binding
 │     │     ├─ config/
 │     │     ├─ assets/
 │     │     ├─ assets.lock
@@ -397,7 +399,7 @@ roboharness/
 │  ├─ scenarios/warehouse_default.yaml
 │  ├─ agents/keyboard.yaml
 │  ├─ tasks/pointnav.yaml
-│  └─ simulators/isaac_sim_go2.yaml
+│  └─ simulators/isaac_anymal_c.yaml
 │
 ├─ deployment/                          # 部署的权威定义
 │  ├─ README.md                         # mounts、profiles、commands、host 要求
@@ -476,32 +478,32 @@ tasks/<task>
 evaluators/<evaluator>
 ```
 
-新增实现使用明确配置 ID 和小型 factory/entry point 选择，不建设动态插件市场。MVP 只创建 `isaac_sim/robots/go2`、`keyboard`、`pointnav` 和 `simple_navigation`。Task/Evaluator 不得 import simulator backend；Agent 只能依赖公开 ROS data plane 和 platform contract。
+新增实现使用明确配置 ID 和小型 factory/entry point 选择，不建设动态插件市场。MVP 只创建 `isaac/robots/anymal_c`、`keyboard`、`pointnav` 和 `simple_navigation`。Task/Evaluator 不得 import simulator backend；Agent 只能依赖公开 ROS data plane 和 platform contract。
 
 每个 leaf implementation 可以是独立 ament/Python package，但父目录不是 package。这允许 Agent 后续分别携带 Nav2、PyTorch 或 VLA runtime，而不污染平台依赖。
 
-### 10.3 Isaac Sim backend and Go2 ownership
+### 10.3 Isaac Sim backend and ANYmal C ownership
 
 Env 的可执行实现为：
 
 ```text
-Environment Backend = Isaac Sim runtime + Go2 binding
+Environment Backend = Isaac Sim 4.5.0 runtime + ANYmal C binding
 ```
 
-`simulators/isaac_sim` 不是普通 ROS adapter package。`rh.kit` 与 `rh.isaac` extension 管理 timeline、stage、physics、world、readiness、Episode reset 和 safety。标准 sensors、TF、clock、command transport 使用 Isaac Sim 原生 `isaacsim.ros2.bridge` OmniGraph/Action Graph nodes；项目只保存官方方式下的 graph、topic/frame 配置和必要的 lifecycle glue，不复制 ROS 2 Bridge。Bridge publishers/subscribers/services 只在 simulation playback 时活跃，因此 Env READY 必须验证 timeline 正在运行且所需 Action Graph 已激活。[Isaac Sim ROS 2 Bridge](https://docs.isaacsim.omniverse.nvidia.com/latest/py/source/extensions/isaacsim.ros2.bridge/docs/index.html)
+`simulators/isaac` 不是普通 ROS adapter package。`rh.kit` 与 `rh.isaac` extension 管理 timeline、stage、physics、world、readiness、Episode reset 和 safety。标准 sensors、TF、clock、command transport 使用 Isaac Sim 4.5 原生 ROS 2 Bridge OmniGraph/Action Graph nodes；项目只保存官方方式下的 graph、topic/frame 配置和必要的 lifecycle glue，不复制 ROS 2 Bridge。Bridge publishers/subscribers/services 只在 simulation playback 时活跃，因此 Env READY 必须验证 timeline 正在运行且所需 Action Graph 已激活。[Isaac Sim 4.5 ROS 2 Bridge](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/py/source/extensions/isaacsim.ros2.bridge/docs/index.html)
 
-`simulators/isaac_sim/robots/go2` 拥有完整低层仿真实现：asset、spawn、articulation、sensor prim、`cmd_vel` 到 locomotion controller、root/joint state reset、physics 参数与最终安全门控。Agent 只输出平台控制命令，不承担 Go2 底层运控。
+`simulators/isaac/robots/anymal_c` 拥有完整低层仿真实现：asset、spawn、articulation、sensor prim、`cmd_vel` 到官方 locomotion policy、root/joint state reset、physics 参数与最终安全门控。Agent 只输出平台控制命令，不承担 ANYmal C 底层仿真运控。MVP 直接运行 Isaac Sim 4.5.0 自带的官方策略，不安装 Isaac Lab，也不训练或实现新的关节级运控策略；策略的输入、输出、适用地形、来源和版本必须写入 asset manifest 并经 PR 14 验证。
 
-当前不创建顶层 `robots/` 或 `rh_go2` package。未来增加 `Gazebo + Go2` 时，在 `simulators/gazebo/robots/go2` 实现对应 binding；只有出现经过验证的跨 simulator 复用代码后，才将纯数据或模型提取到 `packages/rh_robot_model`，避免为理论复用预先制造抽象。
+当前不创建顶层 `robots/` 或 `rh_anymal_c` package。未来增加 `Gazebo + ANYmal C` 时，在 `simulators/gazebo/robots/anymal_c` 实现对应 binding；只有出现经过验证的跨 simulator 复用代码后，才将纯数据或模型提取到 `packages/rh_robot_model`，避免为理论复用预先制造抽象。
 
-Isaac backend 的实现以官方能力为准：通过 Kit/extension dependency 启用 Bridge；通过 `isaacsim.ros2.nodes` 提供的 OmniGraph nodes 建立 publisher/subscriber/service graph；需要精确控制发布频率时采用 Standalone/OnImpulseEvent 工作流；timeline、entity/world 等通用控制优先评估官方 `isaacsim.ros2.sim_control`，RoboHarness 只补充原子 Episode reset 与 Go2 controller state 等平台语义。参考：[ROS 2 Bridge](https://docs.isaacsim.omniverse.nvidia.com/latest/py/source/extensions/isaacsim.ros2.bridge/docs/index.html)、[ROS 2 Nodes](https://docs.isaacsim.omniverse.nvidia.com/latest/py/source/extensions/isaacsim.ros2.nodes/docs/index.html)、[Standalone Workflow](https://docs.isaacsim.omniverse.nvidia.com/latest/ros2_tutorials/tutorial_ros2_python.html)、[Simulation Control](https://docs.isaacsim.omniverse.nvidia.com/latest/py/source/extensions/isaacsim.ros2.sim_control/docs/index.html)。
+Isaac backend 的实现以 4.5 官方能力为准：通过 Kit/extension dependency 启用 Bridge；通过 `isaacsim.ros2.nodes` 提供的 OmniGraph nodes 建立 publisher/subscriber/service graph；需要精确控制发布频率时采用 Standalone/OnImpulseEvent 工作流；timeline、entity/world 等通用控制优先评估官方 `isaacsim.ros2.sim_control`，RoboHarness 只补充原子 Episode reset 与 ANYmal C policy state 等平台语义。参考：[ROS 2 Bridge](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/py/source/extensions/isaacsim.ros2.bridge/docs/index.html)、[ROS 2 Nodes](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/py/source/extensions/isaacsim.ros2.nodes/docs/index.html)、[Standalone Workflow](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/ros2_tutorials/tutorial_ros2_python.html)、[Simulation Control](https://docs.isaacsim.omniverse.nvidia.com/4.5.0/py/source/extensions/isaacsim.ros2.sim_control/docs/index.html)。
 
 ### 10.4 Build domains without `ros2_ws`
 
 | Domain | Content | Tooling |
 |---|---|---|
 | Platform / ROS | `packages/`、`agents/`、`tasks/`、`evaluators/`、`tests/fixtures/` | Colcon / ament |
-| Isaac Backend | Kit app、extension、Action Graph、Go2 binding | Isaac Sim / Kit extension system |
+| Isaac Backend | Kit app、extension、Action Graph、ANYmal C binding | Isaac Sim / Kit extension system |
 
 推荐构建命令：
 
@@ -512,7 +514,7 @@ colcon build \
   --install-base .build/colcon/install
 ```
 
-Isaac Kit extension 不伪装成 ROS package，由 `simulators/isaac_sim/apps/rh.kit` 加载。`colcon.defaults.yaml` 固定 `.build/colcon/*`，根目录保持整洁。
+Isaac Kit extension 不伪装成 ROS package，由 `simulators/isaac/apps/rh.kit` 加载。`colcon.defaults.yaml` 固定 `.build/colcon/*`，根目录保持整洁。
 
 ### 10.5 Deployment ownership
 
@@ -539,7 +541,7 @@ services:
 | Host/source | Container target | Mode | Consumer |
 |---|---|---|---|
 | `configs/` | `/opt/rh/configs` | read-only | all |
-| `simulators/isaac_sim/` | `/opt/rh/simulators/isaac_sim` | image copy；dev 时 read-only mount | env |
+| `simulators/isaac/` | `/opt/rh/simulators/isaac` | image copy；dev 时 read-only mount | env |
 | `results/` | `/data/results` | read-write | experiment |
 | `logs/<service>/` | `/data/logs` | read-write | corresponding service |
 | named Isaac caches | NVIDIA/Omniverse cache paths | read-write | env |
@@ -580,7 +582,7 @@ docker compose --env-file deployment/env/.env \
 
 ```yaml
 services:
-  env:        # Isaac Sim app + native ROS 2 Bridge + Go2 binding; NVIDIA runtime
+  env:        # Isaac Sim app + native ROS 2 Bridge + ANYmal C binding; NVIDIA runtime
   agent:      # Keyboard Agent; interactive stdin in manual profile
   experiment: # orchestrator + task + evaluator + recorder
 ```
@@ -597,7 +599,7 @@ services:
 
 | Image | Installed content |
 |---|---|
-| `env` | `rh_interfaces`、必要的 `rh_ros`、Isaac Kit app/extension、原生 `isaacsim.ros2.bridge`、Isaac Sim × Go2 binding |
+| `env` | `rh_interfaces`、必要的 `rh_ros`、Isaac Kit app/extension、原生 `isaacsim.ros2.bridge`、Isaac Sim × ANYmal C binding |
 | `agent` | `rh_interfaces`、`rh_ros`、`rh_agent_keyboard` |
 | `experiment` | `rh_interfaces`、`rh_core`、`rh_ros`、`rh_experiment`、`rh_task_pointnav`、`rh_eval_simple_navigation` |
 
@@ -608,7 +610,7 @@ Env 的高频数据平面由 Isaac 原生 ROS 2 Bridge Action Graph 直接发布
 | Mount | Mode | Consumer | Purpose |
 |---|---|---|---|
 | `configs/` | read-only | all | experiment/env/agent config |
-| `simulators/isaac_sim/` | image copy；dev override read-only | env | Kit app、extension、Go2 binding 与 assets |
+| `simulators/isaac/` | image copy；dev override read-only | env | Kit app、extension、ANYmal C binding 与 assets |
 | `results/` | read-write | experiment | durable result artifacts |
 | `logs/<service>/` | read-write | each service | runtime diagnostics |
 | Isaac caches | read-write | env | shader/content cache acceleration |
@@ -628,7 +630,7 @@ docker compose up
   -> orchestrator prepares Episode 0
 ```
 
-Env 只有在 Isaac、stage、Go2、physics、ROS bridge、clock、required topics/services 均可用后发布 READY。Agent 只有在 node、subscriptions、publisher、reset service 和 task/state inputs 均建立后发布 READY。status 使用 transient local，周期心跳 1 Hz；状态变化立即发布。
+Env 只有在 Isaac、stage、ANYmal C、physics、ROS bridge、clock、required topics/services 均可用后发布 READY。Agent 只有在 node、subscriptions、publisher、reset service 和 task/state inputs 均建立后发布 READY。status 使用 transient local，周期心跳 1 Hz；状态变化立即发布。
 
 配置提供 `startup_timeout_s`、`status_stale_timeout_s`、`reset_timeout_s`、`safe_stop_timeout_s`，禁止硬编码 `sleep 20/30`。建议 MVP 默认分别为 300、5、30、2 秒，Isaac startup timeout 可配置增大。Startup 使用 wall/steady clock，因为 simulation clock 可能尚未前进；Episode timeout 使用 simulation time，同时以 wall-clock watchdog 检测 Isaac freeze。
 
@@ -673,7 +675,7 @@ MVP 不包含 SPL、语义目标、动态场景、复杂碰撞惩罚或 initial 
 | Mock ROS integration | status QoS、service timeout/idempotency、task/state propagation | CPU CI + ROS 2 |
 | Multi-Episode | reset order、无进程重启、无状态泄漏、结果隔离 | CPU CI + mocks |
 | Compose smoke | 三个 CPU mock services 的 network/discovery/startup | Docker CI |
-| Isaac integration | stage、Go2 reset、clock、TF、sensors、cmd_vel gate | GPU self-hosted/manual/nightly |
+| Isaac integration | stage、ANYmal C reset、clock、TF、sensors、cmd_vel gate | GPU self-hosted/manual/nightly |
 | MVP E2E | GUI keyboard、多 Episode、metrics/results | GPU 人工；稳定后 nightly |
 
 Mock Env/Agent 是 protocol test fixture，不是第二 simulator。它们必须 CPU-only、deterministic、fast，并支持注入 readiness delay、reset error、crash/stale status、motion trajectory 和 timeout。
@@ -852,8 +854,8 @@ CPU CI 至少执行 `colcon build`、lint/type checks、unit/interface tests、m
 
 **Goal:** 尽早验证 Isaac Kit backend、官方 ROS 2 Bridge、DDS 和容器 GPU 风险。  
 **Changes:** pinned env image、`rh.kit`、`rh.isaac` extension skeleton、headless/GUI launcher、启用 `isaacsim.ros2.bridge`、clock/Action Graph smoke、manual validation script。  
-**Out of Scope:** Go2 spawn/control、完整 reset、MVP E2E。  
-**Files / Modules:** `simulators/isaac_sim/apps/`、`extensions/`、`bridge/`、`deployment/docker/env/`、Compose env profile、GPU tests。  
+**Out of Scope:** ANYmal C spawn/control、Isaac Lab、policy training/export、完整 reset、MVP E2E。
+**Files / Modules:** `simulators/isaac/apps/`、`extensions/`、`bridge/`、`deployment/docker/env/`、Compose env profile、GPU tests。
 **ROS Interfaces:** STARTING/ERROR status；READY 暂不承诺，或仅在 smoke mode 使用明确 capability detail。  
 **Tests:** image build、GPU launch、stage/clock/native Bridge/ROS discovery manual or self-hosted smoke。  
 **Acceptance Criteria:** 锁定可复现 Isaac/driver/ROS 版本；外部容器能看到 Isaac 原生 Bridge ROS graph；项目未复制 sensor/cmd ROS bridge；验证记录齐全。  
@@ -861,18 +863,18 @@ CPU CI 至少执行 `colcon build`、lint/type checks、unit/interface tests、m
 **Risks:** Isaac/ROS distro/GPU driver compatibility 是最高外部风险，应早期暴露。  
 **After this PR:** 首个 Isaac/GPU 依赖点已被隔离并验证。
 
-#### PR 14 — Isaac Sim × Go2 Binding and Locomotion
+#### PR 14 — Isaac Sim × ANYmal C Binding and Locomotion
 
-**Goal:** 在 Isaac backend 内实现 Go2 asset、传感器和底层仿真运控，不创建独立 Go2 runtime package。  
-**Changes:** asset manifest/license、Isaac spawn、articulation、`cmd_vel` 到 locomotion controller、sensor/physics config、Bridge Action Graph wiring。  
-**Out of Scope:** Keyboard Agent、multi-Episode orchestration changes、Gazebo binding。  
-**Files / Modules:** `simulators/isaac_sim/robots/go2/`、`simulators/isaac_sim/bridge/`、GPU tests。  
+**Goal:** 在 Isaac backend 内实现 ANYmal C asset、传感器和官方 locomotion policy binding，不创建独立 ANYmal C runtime package。
+**Changes:** asset/policy manifest/license、Isaac spawn、articulation、`cmd_vel` 到官方 policy、sensor/physics config、Bridge Action Graph wiring。
+**Out of Scope:** policy training/export、Isaac Lab runtime、Keyboard Agent、multi-Episode orchestration changes、Gazebo binding。
+**Files / Modules:** `simulators/isaac/robots/anymal_c/`、`simulators/isaac/bridge/`、GPU tests。
 **ROS Interfaces:** 通过 Isaac 原生 Bridge 暴露 odom/imu/scan/TF/cmd_vel，保持 Part VII names/types。  
 **Tests:** asset/license check、TF uniqueness、spawn pose、zero command、manual GPU motion smoke。  
-**Acceptance Criteria:** Go2 在 Isaac 中可 spawn 并由 Twist 驱动；标准 Data Plane 可见；底层 controller 位于 simulator binding；不修改 Core interface。  
+**Acceptance Criteria:** ANYmal C 在 Isaac 中可 spawn 并由 Twist 驱动；标准 Data Plane 可见；官方 policy 位于 simulator binding；不修改 Core interface。
 **Dependencies:** PR 13。  
 **Risks:** asset redistributability、controller semantics；以 manifest/license 和限幅测试缓解。  
-**After this PR:** Isaac Sim × Go2 真实数据与低层运控闭环成立。
+**After this PR:** Isaac Sim × ANYmal C 真实数据与基础低层运控闭环成立。
 
 #### PR 15 — ROS 2 Keyboard Agent
 
@@ -887,12 +889,12 @@ CPU CI 至少执行 `colcon build`、lint/type checks、unit/interface tests、m
 **Risks:** Docker TTY/input portability；明确支持矩阵并将输入 adapter 与 agent logic 分离。  
 **After this PR:** MVP Agent 可接入 mock 或真实 Env。
 
-#### PR 16 — Isaac Go2 Env Contract
+#### PR 16 — Isaac ANYmal C Env Contract
 
 **Goal:** 使真实 Env 达到 READY/reset/safe-gate 的完整平台 contract。  
 **Changes:** readiness probes、idempotent reset、world/root/joint pose、velocity、locomotion controller 与 physics reset、Episode gate、watchdogs、error mapping。  
 **Out of Scope:** 新 robot/simulator、复杂 scene、自动 restart。  
-**Files / Modules:** `simulators/isaac_sim/extensions/rh.isaac/`、`simulators/isaac_sim/robots/go2/reset.py`、env deployment、GPU integration tests。  
+**Files / Modules:** `simulators/isaac/extensions/rh.isaac/`、`simulators/isaac/robots/anymal_c/reset.py`、env deployment、GPU integration tests。
 **ROS Interfaces:** 完整 Env status/reset/state/data plane。  
 **Tests:** 两次以上 reset、pose/velocity verification、clock/TF、non-RUNNING command rejection、freeze/error manual cases。  
 **Acceptance Criteria:** 多次 reset 不重启 Isaac；每次 start state 在容差内；READY 含义满足 Part VI/XII。  
@@ -904,7 +906,7 @@ CPU CI 至少执行 `colcon build`、lint/type checks、unit/interface tests、m
 
 #### PR 17 — MVP End-to-End Integration
 
-**Goal:** 打通唯一承诺的 Isaac × Go2 × Keyboard × PointNav × Simple Eval 纵向路径。  
+**Goal:** 打通唯一承诺的 Isaac × ANYmal C × Keyboard × PointNav × Simple Eval 纵向路径。
 **Changes:** production Compose/config、GUI manual profile、integration wiring、操作/验收手册、bug fixes limited to contract compliance。  
 **Out of Scope:** 新 feature、性能重构、第二 implementation。  
 **Files / Modules:** `deployment/`、configs、guides、e2e tests；必要的现有 package 小修。  
@@ -941,7 +943,7 @@ CPU CI 至少执行 `colcon build`、lint/type checks、unit/interface tests、m
 
 ### 16.2 Commit convention
 
-使用 Conventional Commits：`feat`、`fix`、`refactor`、`test`、`docs`、`build`、`ci`、`chore`。建议 scope：`protocol`、`core`、`experiment`、`task`、`eval`、`env`、`isaac`、`go2`、`agent`、`docker`。
+使用 Conventional Commits：`feat`、`fix`、`refactor`、`test`、`docs`、`build`、`ci`、`chore`。建议 scope：`protocol`、`core`、`experiment`、`task`、`eval`、`env`、`isaac`、`anymal`、`agent`、`docker`。
 
 ```text
 feat(protocol): define component status interfaces
@@ -983,7 +985,7 @@ test(eval): cover reset discontinuity in path length
 - 只有 `env`、`agent`、`experiment` 三个 runtime services，职责符合本文；
 - Env/Agent 直接交换 observations/`cmd_vel`，Experiment 不在闭环中；
 - Env/Agent readiness 与 reset contract 生效，禁止固定 sleep；
-- Isaac + Go2 + Keyboard + PointNav + Simple Eval 连续执行至少 3 局且不重启组件；
+- Isaac + ANYmal C + Keyboard + PointNav + Simple Eval 连续执行至少 3 局且不重启组件；
 - success、timeout、abort 和至少一个 component error 路径经验证；
 - 每局输出 metrics/termination reason/artifacts，Experiment 输出 summary；
 - 非 RUNNING 命令被 Agent 和 Env 双重归零/拒绝；
@@ -1007,7 +1009,7 @@ test(eval): cover reset discontinuity in path length
 
 审查规则：第二 implementation 若要求修改 Core，首先判断是 contract 缺陷、implementation detail 泄漏，还是确有跨实现通用能力。只有前两者修复或经 ADR 证明的通用语义才可改变 Core；不得为单个 integration 特例污染协议。
 
-最有价值的验证顺序是 second Agent → second Simulator（建议 Gazebo + Go2）→ second Robot → second Task → second Eval。Gazebo + Go2 应保持 Agent、PointNav、Evaluator 和 Experiment protocol 不变。
+最有价值的验证顺序是 second Agent → second Simulator（建议 Gazebo + ANYmal C）→ second Robot → second Task → second Eval。Gazebo + ANYmal C 应保持 Agent、PointNav、Evaluator 和 Experiment protocol 不变。
 
 ---
 
@@ -1017,7 +1019,7 @@ test(eval): cover reset discontinuity in path length
 
 先做它的原因：当前仓库为空，后续 interface、mock 和 Isaac 工作都需要统一 ROS distro、构建命令、目录、CI 与 review 规则。它提供可验证底座，同时不把尚未被代码检验的 protocol 设计与大量 scaffolding 一次绑定。
 
-它不实现 ROS interface、runtime node、Docker image、Isaac、Go2 或 Keyboard Agent，也不声称完成任何实验能力。
+它不实现 ROS interface、runtime node、Docker image、Isaac、ANYmal C 或 Keyboard Agent，也不声称完成任何实验能力。
 
 具体 acceptance criteria：
 
@@ -1042,7 +1044,7 @@ PR01 Repository Foundation
              ├─ PR07 Single-Episode Orch ────┤
              ├─ PR08 PointNav ──┬─ PR09 Eval ┤
              │                  └─ PR15 Keyboard Agent ──────────────┐
-             └─ PR13 Isaac/Bridge ── PR14 Go2 Binding ─ PR16 Env ───┤
+             └─ PR13 Isaac/Bridge ── PR14 ANYmal C Binding ─ PR16 Env ───┤
 PR03 ─────────── PR10 Recorder ─────────────────┐                    │
                                                 v                    │
 PR05 + PR06 + PR07 + PR08 + PR09 + PR10 ──> PR11 Multi-Episode     │

@@ -1,0 +1,20 @@
+[package]
+title = "RoboHarness Isaac Backend"
+description = "Lifecycle glue and native ROS 2 Bridge graph for RoboHarness"
+version = "0.1.0"
+category = "Robotics"
+keywords = ["isaac", "ros2", "roboharness"]
+
+[core]
+reloadable = false
+
+[dependencies]
+"omni.graph.core" = {}
+"omni.timeline" = {}
+"omni.usd" = {}
+"isaacsim.core.api" = {}
+"isaacsim.core.nodes" = {}
+"isaacsim.ros2.bridge" = {}
+
+[[python.module]]
+name = "rh.isaac"
