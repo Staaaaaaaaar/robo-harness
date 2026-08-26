@@ -1,6 +1,6 @@
 # RoboHarness
 
-RoboHarness 是面向机器人导航任务的快速实验、自动运行与统一评估平台。它通过稳定的 ROS 2 运行协议，将 Simulator、Robot、Agent、Task 与 Evaluation 解耦，并以可复现的 Experiment / Episode 模型组织实验。
+RoboHarness 是面向机器人导航算法的规范化评测框架。它通过稳定的 ROS 2 运行协议，将 Simulator、Robot、Agent、Task 与 Evaluation 解耦，并以可复现的 Experiment / Episode 模型组织评测。
 
 > Architecture for extension, implementation for MVP.
 
@@ -16,6 +16,13 @@ RoboHarness 是面向机器人导航任务的快速实验、自动运行与统�
 - Task：PointNav
 - Evaluation：Simple Navigation Evaluation
 - Runtime：`env`、`agent`、`experiment` 三个 Docker Compose service
+
+版本演进边界如下：
+
+- **v0.1.0：规范化评测框架。** 聚焦版本化配置、批量 Episode、统一评估、结果归档和复现。正式评测以 headless 方式运行；GUI 仅作为仿真可视化、诊断和人工验收入口。
+- **v0.1.1：沙盒模式。** 在不改变评测内核和隔离边界的前提下，再加入源码/工作区挂载、交互式算法调试和将开发配置固化为评测输入的流程。
+
+因此，能够启动 Isaac GUI 不代表 v0.1.0 已提供通用沙盒。Keyboard Agent 仍是当前纵向链路的参考实现，GUI 与 headless 共享同一套 Env 和 ROS 2 contract。
 
 ## 核心架构
 
@@ -136,9 +143,9 @@ services start
 
 完整贡献规范见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-## 非目标
+## v0.1.0 非目标
 
-MVP 不实现 Gazebo、Nav2、Reactive/RL/VLA/VLN Agent、其他机器人、复杂 benchmark、通用插件框架、Web UI、数据库、分布式调度或 Kubernetes。
+v0.1.0 不实现沙盒开发模式、源码热更新、Gazebo、Nav2、Reactive/RL/VLA/VLN Agent、其他机器人、复杂 benchmark、通用插件框架、Web UI、数据库、分布式调度或 Kubernetes。沙盒模式计划从 v0.1.1 开始独立演进。
 
 ## License
 

@@ -4,7 +4,7 @@
 
 ## 当前文档
 
-- [软件架构与分阶段 PR 开发规划](architecture-and-development-plan.md)：项目定义、运行架构、ROS 2 接口、生命周期、仓库与 Docker 结构、测试策略、逐 PR 路线图及依赖关系。
+- [软件架构与分阶段 PR 开发规划](architecture-and-development-plan.md)：项目定义、v0.1.0 规范化评测框架与 v0.1.1 沙盒模式边界、运行架构、ROS 2 接口、生命周期、仓库与 Docker 结构、测试策略、逐 PR 路线图及依赖关系。
 - [ADR 0001：开发平台基线](adr/0001-development-platform.md)：固定 Ubuntu 22.04、ROS 2 Humble、Python 3.10 和容器唯一开发路径。
 - [PR13 Isaac backend 验证](guides/isaac-pr13-validation.md)：GPU/driver 前置条件、headless/GUI 启动、原生 ROS 2 Bridge smoke 与证据格式。
 - [PR13 Isaac 开发环境与调整记录](guides/isaac-pr13-development-environment.md)：环境分层、已验证宿主机快照、实现调整、故障边界与新机器复现顺序。

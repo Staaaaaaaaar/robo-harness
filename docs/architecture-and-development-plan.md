@@ -1,7 +1,7 @@
 # RoboHarness 软件架构与分阶段 PR 开发规划
 
 - 状态：Proposed implementation baseline
-- 目标版本：v0.1.0 MVP
+- 目标版本：v0.1.0 规范化评测框架 MVP
 - 适用范围：当前 monorepo 的首次实现
 - 核心约束：稳定接口、简单实现；扩展型架构、MVP 级实现
 
@@ -13,7 +13,7 @@
 
 ### 1.1 RoboHarness 是什么
 
-RoboHarness 是一套机器人导航实验平台，由以下能力组成：
+RoboHarness v0.1.0 是一套机器人导航算法规范化评测框架，由以下能力组成：
 
 - Experiment Protocol 与 ROS 2 平台接口；
 - Experiment / Episode 编排；
@@ -43,6 +43,17 @@ MVP 只运行 Isaac Sim 4.5.0 自带的 ANYmal C locomotion policy，不训练�
 ### 1.4 未来扩展维度
 
 Simulator、Robot、Agent、Task、Evaluation 均通过 ROS contract、配置约定和目录边界扩展。MVP 使用显式 factory 和类型枚举，不建设动态插件注册、依赖注入框架或复杂继承树。
+
+### 1.5 版本定位与演进边界
+
+| 版本 | 产品定位 | 核心能力 | 明确边界 |
+|---|---|---|---|
+| v0.1.0 | 规范化评测框架 | 版本化配置、Experiment/Episode 编排、headless 批量运行、统一评估与结果归档、可复查 GPU 验收 | 不提供沙盒开发体验；GUI 仅用于可视化、诊断和人工验收 |
+| v0.1.1 | 评测框架上的沙盒模式 | 交互式开发入口、开发者源码/工作区挂载、算法调试、场景与传感器观察，以及将已调试配置固化为可评测输入 | 不削弱 v0.1.0 的评测隔离、版本锁定、truth 边界和结果可追溯性 |
+
+v0.1.0 首先回答：给定确定的 Environment、Agent、Task、Evaluator、场景和 seed，系统能否自动执行多个 Episode，并生成可重复、可追踪、可比较的结果。GUI profile 与 headless profile 共享相同 Env 实现和 ROS contract；GUI 只负责显示仿真窗口、观察 robot/sensor 状态、辅助故障诊断和人工验收，不代表已经支持沙盒模式。Keyboard Agent 是评测链路的 reference implementation，也不构成通用交互式开发环境。
+
+v0.1.1 再回答：开发者能否在不破坏评测内核的前提下，自由接入、运行和调试算法，并将确认后的代码、依赖和配置固化为可复现的 benchmark 输入。源码热更新、开发容器、自由场景操作、调试工具集成等沙盒体验不得提前成为 v0.1.0 的发布门槛。
 
 ---
 
@@ -907,7 +918,7 @@ CPU CI 至少执行 `colcon build`、lint/type checks、unit/interface tests、m
 #### PR 17 — MVP End-to-End Integration
 
 **Goal:** 打通唯一承诺的 Isaac × ANYmal C × Keyboard × PointNav × Simple Eval 纵向路径。
-**Changes:** production Compose/config、GUI manual profile、integration wiring、操作/验收手册、bug fixes limited to contract compliance。  
+**Changes:** production Compose/config、headless 评测路径、仅用于可视化与人工验收的 GUI profile、integration wiring、操作/验收手册、bug fixes limited to contract compliance。
 **Out of Scope:** 新 feature、性能重构、第二 implementation。  
 **Files / Modules:** `deployment/`、configs、guides、e2e tests；必要的现有 package 小修。  
 **ROS Interfaces:** 不新增，任何变更需单独 protocol PR/ADR。  
@@ -921,14 +932,27 @@ CPU CI 至少执行 `colcon build`、lint/type checks、unit/interface tests、m
 
 **Goal:** 将已完成 MVP 转为可重复使用和可维护的 v0.1.0。  
 **Changes:** fresh-install verification、failure runbook、schema/interface freeze notes、license/SBOM、release notes、tag workflow。  
-**Out of Scope:** 第二 simulator/agent/task/eval、新 UI。  
+**Out of Scope:** 沙盒模式、源码工作区挂载、第二 simulator/agent/task/eval、新 UI。
 **Files / Modules:** docs、CI/release、LICENSE/NOTICE、version metadata。  
 **ROS Interfaces:** 冻结 v0.1 contract，不新增。  
 **Tests:** 全部 CPU gates、fresh GPU E2E、artifact checksums、文档命令验证。  
 **Acceptance Criteria:** Part XVII 的 MVP/v0.1 DoD 全部满足；已知限制明确；可创建 signed/annotated `v0.1.0` tag。  
 **Dependencies:** PR 17。  
 **Risks:** 文档与镜像漂移；从 tag/build metadata 生成版本并做 clean-room 验证。  
-**After this PR:** v0.1.0 可发布，后续用第二 implementation 验证抽象。
+**After this PR:** v0.1.0 规范化评测框架可发布；沙盒能力从 v0.1.1 开始独立规划，后续再用第二 implementation 验证抽象。
+
+### Post-MVP — v0.1.1 Sandbox Mode
+
+v0.1.1 在已发布的评测内核上增加沙盒模式，不重新定义 Experiment/Episode 生命周期或 Env、Agent、Task、Evaluator 的责任边界。具体 PR 在 v0.1.0 验收后拆分，至少覆盖：
+
+- 独立于 benchmark profile 的 sandbox Compose/profile；
+- 开发者源码或工作区挂载，以及明确的依赖与入口约定；
+- GUI 中的交互式观察、算法调试和必要的场景操作；
+- sandbox 配置向版本化 Agent/config/image 标识的固化流程；
+- 防止 evaluator ground truth、可变工作区或临时调试配置进入正式评测结果的隔离检查；
+- 文档明确区分“开发调试结果”和“符合规范的评测结果”。
+
+v0.1.1 不以通用插件市场、分布式调度、Web IDE 或多仿真器为默认交付内容；这些能力仍需由真实需求和独立 ADR/里程碑证明。
 
 ---
 
@@ -991,9 +1015,18 @@ test(eval): cover reset discontinuity in path length
 - 非 RUNNING 命令被 Agent 和 Env 双重归零/拒绝；
 - CPU mock CI 绿色，真实 GPU E2E 有可复查证据。
 
-### v0.1 Done
+### v0.1.0 Evaluation Framework Done
 
-除 MVP Done 外，还要求 clean-room 安装/运行验证、版本锁定、LICENSE/NOTICE 和第三方 asset 审计、发布说明、已知限制、接口与结果 schema version、镜像 digest/SBOM，以及 `v0.1.0` annotated tag。
+除 MVP Done 外，还要求 clean-room 安装/运行验证、版本锁定、LICENSE/NOTICE 和第三方 asset 审计、发布说明、已知限制、接口与结果 schema version、镜像 digest/SBOM，以及 `v0.1.0` annotated tag。正式评测默认走 headless profile；GUI profile 只作为可视化、诊断和人工验收入口，不包含沙盒工作区或自由开发能力。
+
+### v0.1.1 Sandbox Mode Done
+
+- sandbox 与 benchmark 使用不同的显式 profile，结果不会被混淆；
+- 开发者可以挂载工作区、启动算法并使用 GUI/调试工具观察运行；
+- Agent 仍只依赖公开 ROS data plane，不直接依赖 evaluator truth；
+- 可将确认后的代码、依赖和配置固化为带版本标识的评测输入；
+- 使用可变源码、临时配置或调试权限的运行不会被标记为规范评测结果；
+- v0.1.0 的 headless 评测、结果 schema 和复现流程保持兼容并通过回归测试。
 
 ---
 
